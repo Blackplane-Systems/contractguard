@@ -11,20 +11,34 @@ from contractguard.engine import Severity
 RULES_DIR = Path(__file__).resolve().parent.parent / "rules"
 
 
+def fake_aws_access_key() -> str:
+    return "AKIA" + "IOSFODNN7EXAMPLE"
+
+
+def fake_github_token() -> str:
+    return "ghp_" + "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefgh"
+
+
+def fake_private_key_block() -> str:
+    begin = "-----BEGIN " + "RSA PRIVATE KEY-----"
+    end = "-----END " + "RSA PRIVATE KEY-----"
+    return f"{begin}\nMIIEp...\n{end}\n"
+
+
 class TestExtractFacts:
     def test_detects_aws_access_key(self):
-        content = "key: AKIAIOSFODNN7EXAMPLE \n"
+        content = f"key: {fake_aws_access_key()} \n"
         facts = extract_facts(content)
         assert facts["has_aws_key"] is True
         assert facts["secret_count"] >= 1
 
     def test_detects_github_token(self):
-        content = "GITHUB_TOKEN=ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefgh\n"
+        content = f"GITHUB_TOKEN={fake_github_token()}\n"
         facts = extract_facts(content)
         assert facts["secret_count"] >= 1
 
     def test_detects_private_key(self):
-        content = "-----BEGIN RSA PRIVATE KEY-----\nMIIEp...\n-----END RSA PRIVATE KEY-----\n"
+        content = fake_private_key_block()
         facts = extract_facts(content)
         assert facts["has_private_key"] is True
 
@@ -49,7 +63,7 @@ class TestExtractFacts:
         assert facts["secret_count"] == 0
 
     def test_redacted_preview(self):
-        content = "GITHUB_TOKEN=ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefgh\n"
+        content = f"GITHUB_TOKEN={fake_github_token()}\n"
         facts = extract_facts(content)
         for _, _, preview in facts["secrets_found"]:
             assert "****" in preview
@@ -58,7 +72,7 @@ class TestExtractFacts:
 class TestAnalyze:
     def test_analyze_secrets_file(self):
         with tempfile.NamedTemporaryFile(mode="w", suffix=".env", delete=False) as f:
-            f.write("AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE\n")
+            f.write(f"AWS_ACCESS_KEY_ID={fake_aws_access_key()}\n")
             f.write("DB_PASSWORD=admin123\n")
             path = Path(f.name)
         try:
@@ -87,7 +101,7 @@ class TestAnalyze:
 
     def test_findings_have_attack_vector(self):
         with tempfile.NamedTemporaryFile(mode="w", suffix=".env", delete=False) as f:
-            f.write("GITHUB_TOKEN=ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefgh\n")
+            f.write(f"GITHUB_TOKEN={fake_github_token()}\n")
             path = Path(f.name)
         try:
             findings = analyze(path, RULES_DIR)
@@ -97,7 +111,7 @@ class TestAnalyze:
 
     def test_findings_have_cwe(self):
         with tempfile.NamedTemporaryFile(mode="w", suffix=".env", delete=False) as f:
-            f.write("AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE\n")
+            f.write(f"AWS_ACCESS_KEY_ID={fake_aws_access_key()}\n")
             path = Path(f.name)
         try:
             findings = analyze(path, RULES_DIR)

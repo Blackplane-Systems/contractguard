@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "contractguard"
-version = "2.0.0"
-description = "Stop bad inputs before they break your systems — 9 analyzers for secrets, PII, SQL, configs, Dockerfiles, dependencies, and more."
+version = "1.0.0"
+description = "ContractGuard security analysis core for VS Code and CI workflows."
 readme = "README.md"
 license = {text = "Apache-2.0"}
 requires-python = ">=3.11"
@@ -26,9 +26,6 @@ dependencies = [
     "jsonschema>=4.20.0",
     "sqlparse>=0.5.0",
     "jinja2>=3.1.0",
-    "fastapi>=0.104.0",
-    "uvicorn>=0.24.0",
-    "python-multipart>=0.0.6",
 ]
 
 [project.optional-dependencies]
@@ -40,9 +37,10 @@ dev = [
 
 [project.scripts]
 contractguard = "contractguard.cli:app"
+contractguard-bridge = "contractguard.bridge:app"
 
 [project.urls]
-Homepage = "https://github.com/contractguard/contractguard"
+Homepage = "https://github.com/Blackplane-Systems/contractguard"
 
 [tool.setuptools.packages.find]
 where = ["src"]
