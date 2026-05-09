@@ -44,6 +44,9 @@ jobs:
       - name: Build extension
         run: npm run build
 
+      - name: Create VSIX output directory
+        run: mkdir -p dist-vsix
+
       - name: Package VSIX
         run: npm run package
 

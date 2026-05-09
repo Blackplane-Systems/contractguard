@@ -2,7 +2,7 @@
   "name": "contractguard",
   "displayName": "ContractGuard",
   "description": "Security analysis for code, config, Dockerfiles, data payloads, and dependencies.",
-  "version": "3.0.0",
+  "version": "1.0.0",
   "publisher": "BlackplaneSystems",
   "license": "Apache-2.0",
   "icon": "media/icon.png",
@@ -158,7 +158,7 @@
   },
   "scripts": {
     "build": "tsc -p ./tsconfig.json",
-    "package": "vsce package --out dist-vsix/contractguard-3.0.0.vsix",
+    "package": "node -e \"require('fs').mkdirSync('dist-vsix',{recursive:true})\" && vsce package --out dist-vsix/contractguard-1.0.0.vsix",
     "prepackage": "npm run build"
   },
   "devDependencies": {
