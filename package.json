@@ -1,0 +1,170 @@
+{
+  "name": "contractguard",
+  "displayName": "ContractGuard",
+  "description": "Security analysis for code, config, Dockerfiles, data payloads, and dependencies.",
+  "version": "3.0.0",
+  "publisher": "BlackplaneSystems",
+  "license": "Apache-2.0",
+  "icon": "media/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Blackplane-Systems/contractguard"
+  },
+  "homepage": "https://github.com/Blackplane-Systems/contractguard",
+  "engines": {
+    "vscode": "^1.92.0"
+  },
+  "categories": [
+    "Linters",
+    "Programming Languages",
+    "Other"
+  ],
+  "keywords": [
+    "security",
+    "sarif",
+    "sast",
+    "secrets",
+    "sql",
+    "dockerfile",
+    "regex",
+    "pii"
+  ],
+  "activationEvents": [
+    "onStartupFinished",
+    "onCommand:contractguard.scanWorkspace",
+    "onCommand:contractguard.scanCurrentFile",
+    "onView:contractguard.findings"
+  ],
+  "main": "./dist/extension.js",
+  "files": [
+    "dist/**",
+    "src/contractguard/**",
+    "rules/**",
+    "media/**",
+    "python-requirements.txt",
+    "README.md",
+    "LICENSE"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "contractguard.scanWorkspace",
+        "title": "ContractGuard: Scan Workspace"
+      },
+      {
+        "command": "contractguard.scanCurrentFile",
+        "title": "ContractGuard: Scan Current File"
+      },
+      {
+        "command": "contractguard.exportSarif",
+        "title": "ContractGuard: Export SARIF"
+      },
+      {
+        "command": "contractguard.clearFindings",
+        "title": "ContractGuard: Clear Findings"
+      },
+      {
+        "command": "contractguard.openFinding",
+        "title": "ContractGuard: Open Finding"
+      },
+      {
+        "command": "contractguard.installRuntime",
+        "title": "ContractGuard: Install Python Runtime Dependencies"
+      }
+    ],
+    "views": {
+      "explorer": [
+        {
+          "id": "contractguard.findings",
+          "name": "ContractGuard Findings"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "contractguard.scanWorkspace",
+          "when": "view == contractguard.findings",
+          "group": "navigation"
+        },
+        {
+          "command": "contractguard.exportSarif",
+          "when": "view == contractguard.findings",
+          "group": "navigation"
+        },
+        {
+          "command": "contractguard.clearFindings",
+          "when": "view == contractguard.findings",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "ContractGuard",
+      "properties": {
+        "contractguard.pythonPath": {
+          "type": "string",
+          "default": "",
+          "description": "Explicit Python interpreter path used to run the ContractGuard bridge."
+        },
+        "contractguard.scanOnSave": {
+          "type": "boolean",
+          "default": true,
+          "description": "Run ContractGuard after saving a supported file."
+        },
+        "contractguard.scanDebounceMs": {
+          "type": "number",
+          "default": 600,
+          "minimum": 0,
+          "description": "Debounce delay for automatic scans."
+        },
+        "contractguard.enabledAnalyzers": {
+          "type": "array",
+          "default": [
+            "json",
+            "sql",
+            "regex",
+            "secrets",
+            "pii",
+            "config",
+            "dockerfile",
+            "deps"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "description": "Subset of analyzers used by the extension when scanning."
+        },
+        "contractguard.disabledRules": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "description": "Rule ids hidden in the VS Code client."
+        },
+        "contractguard.rulesDirectory": {
+          "type": "string",
+          "default": "",
+          "description": "Override rules directory. When empty, bundled rules are used."
+        },
+        "contractguard.sqlExplainDatabase": {
+          "type": "string",
+          "default": "",
+          "description": "Optional SQLite database path for SQL EXPLAIN mode."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsc -p ./tsconfig.json",
+    "package": "vsce package --out dist-vsix/contractguard-3.0.0.vsix",
+    "prepackage": "npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^20.16.1",
+    "@types/vscode": "^1.92.0",
+    "@vscode/vsce": "^3.2.2",
+    "typescript": "^5.6.2"
+  }
+}

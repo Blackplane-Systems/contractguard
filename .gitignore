@@ -8,6 +8,8 @@ __pycache__/
 dist/
 build/
 *.egg
+dist-vsix/
+node_modules/
 
 # Virtual environments
 .venv/
