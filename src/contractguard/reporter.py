@@ -209,8 +209,8 @@ def render_sarif_report(
                 "tool": {
                     "driver": {
                         "name": "ContractGuard",
-                        "version": "1.0.0",
-                        "informationUri": "https://github.com/contractguard/contractguard",
+                        "version": "1.1.0",
+                        "informationUri": "https://github.com/Blackplane-Systems/contractguard",
                         "rules": rules,
                     }
                 },

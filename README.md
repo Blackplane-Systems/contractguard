@@ -1,66 +1,44 @@
-# ContractGuard for VS Code
+# contract-guard
 
-ContractGuard is a VS Code extension backed by a Python security analysis core. It scans source trees for schema drift, risky SQL, regex complexity, secrets, PII, insecure configuration, Dockerfile issues, and vulnerable dependencies, then surfaces the results as diagnostics, a findings explorer, a status bar score, and SARIF exports.
+`contract-guard` helps you find security and reliability issues in code, configs, queries, Dockerfiles, and dependency files without leaving VS Code.
 
-## What ships in this repository
+## Features
 
-- A reusable Python engine in `src/contractguard` with rule-driven analyzers, scoring, findings, history, and SARIF generation.
-- A VS Code extension in `vscode-src` that runs the engine in a separate Python process and renders results inside the editor.
-- Rules in `rules/` that stay bundled with the extension and CLI.
+- Scan the current file
+- Scan the full workspace
+- Show findings in a dedicated explorer view
+- Publish inline diagnostics in the editor
+- Export SARIF for external security workflows
+- Show an overall security score in the status bar
 
-## Supported analyzers
+## What it checks
 
-- JSON schema analysis
-- SQL analysis
-- Regex complexity analysis
-- Secrets detection
-- PII detection
-- Config security analysis
-- Dockerfile linting
-- Dependency vulnerability analysis
+- JSON schema inconsistencies
+- SQL query risks and anti-patterns
+- Regex complexity and ReDoS risks
+- Hardcoded secrets
+- PII exposure
+- Insecure configuration
+- Dockerfile issues
+- Dependency vulnerabilities
 
-## VS Code features
+## Commands
 
 - `ContractGuard: Scan Workspace`
 - `ContractGuard: Scan Current File`
 - `ContractGuard: Export SARIF`
 - `ContractGuard: Clear Findings`
-- Findings tree view grouped by severity
-- Inline diagnostics and quick navigation
-- Status bar security grade
-- Debounced scan-on-save
-- Configurable analyzer set and disabled rules
+- `ContractGuard: Install Python Runtime Dependencies`
 
-## Runtime requirements
+## Requirements
 
-- Python 3.11+ available on the machine running VS Code
-- Python packages from `python-requirements.txt`
+- Python 3.11 or newer
 
-For local development in this repository:
+If the Python runtime dependencies are missing, run:
 
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r python-requirements.txt
-```
+- `ContractGuard: Install Python Runtime Dependencies`
 
-## Development commands
-
-Python:
-
-```powershell
-.\.venv\Scripts\python.exe -m pytest
-.\.venv\Scripts\python.exe -m contractguard.bridge scan --path . --analyzer all --include-sarif
-```
-
-Extension:
-
-```powershell
-node .\node_modules\typescript\bin\tsc -p .\tsconfig.json
-node .\node_modules\@vscode\vsce\vsce package
-```
-
-## Settings
+## Extension Settings
 
 - `contractguard.pythonPath`
 - `contractguard.scanOnSave`
@@ -70,6 +48,7 @@ node .\node_modules\@vscode\vsce\vsce package
 - `contractguard.rulesDirectory`
 - `contractguard.sqlExplainDatabase`
 
-## Packaging
+## Notes
 
-The extension is packaged from the repository root. The VSIX includes the compiled extension, bundled Python source, rules, and documentation. The output artifact is written to `dist-vsix/`.
+- The extension runs analysis locally.
+- SARIF export is available for CI and external security tooling.

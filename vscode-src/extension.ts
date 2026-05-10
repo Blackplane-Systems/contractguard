@@ -7,6 +7,7 @@ import { installPythonRuntime, runContractGuardScan } from './pythonBridge';
 import { Finding, ScanPayload, Severity } from './types';
 
 const sourceName = 'ContractGuard';
+const analyzerIds = ['json', 'sql', 'regex', 'secrets', 'pii', 'config', 'dockerfile', 'deps'] as const;
 const supportedExtensions = new Set([
   '.json',
   '.sql',
@@ -29,7 +30,13 @@ class ContractGuardController implements vscode.Disposable {
   private readonly statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 50);
   private scanTimer: NodeJS.Timeout | undefined;
   private running = false;
-  private queuedScan: (() => void) | undefined;
+  private queuedRequest:
+    | { targetPath: string; analyzer: string; includeSarif: boolean }
+    | undefined;
+  private queuedScanPromise: Promise<ScanPayload> | undefined;
+  private resolveQueuedScan: ((payload: ScanPayload) => void) | undefined;
+  private rejectQueuedScan: ((error: unknown) => void) | undefined;
+  private scheduledScanAction: (() => Promise<void>) | undefined;
   private latestPayload: ScanPayload | undefined;
 
   constructor(private readonly context: vscode.ExtensionContext) {
@@ -59,7 +66,7 @@ class ContractGuardController implements vscode.Disposable {
       vscode.window.showInformationMessage('ContractGuard requires an open workspace.');
       return;
     }
-    await this.runScan(workspacePath, 'all', includeSarif);
+    await this.runWorkspaceScan(workspacePath, includeSarif);
   }
 
   async scanCurrentFile(): Promise<void> {
@@ -68,7 +75,13 @@ class ContractGuardController implements vscode.Disposable {
       vscode.window.showInformationMessage('No active file to scan.');
       return;
     }
-    await this.runScan(document.uri.fsPath, this.selectAnalyzer(document.uri.fsPath), false);
+    const filePath = document.uri.fsPath;
+    const analyzer = this.selectAnalyzer(filePath);
+    if (analyzer === 'all') {
+      vscode.window.showInformationMessage(`ContractGuard does not support scanning this file type: ${path.basename(filePath)}`);
+      return;
+    }
+    await this.runScan(filePath, analyzer, false);
   }
 
   clear(): void {
@@ -99,18 +112,25 @@ class ContractGuardController implements vscode.Disposable {
       return;
     }
 
-    fs.writeFileSync(target.fsPath, JSON.stringify(payload.sarif, null, 2), 'utf8');
+    await vscode.workspace.fs.writeFile(target, new TextEncoder().encode(JSON.stringify(payload.sarif, null, 2)));
     vscode.window.showInformationMessage(`ContractGuard SARIF exported to ${target.fsPath}`);
   }
 
   scheduleWorkspaceScan(): void {
-    const debounceMs = vscode.workspace.getConfiguration('contractguard').get<number>('scanDebounceMs', 600);
-    if (this.scanTimer) {
-      clearTimeout(this.scanTimer);
+    this.scheduleScan(async () => {
+      await this.scanWorkspace(false);
+    });
+  }
+
+  scheduleFileScan(filePath: string): void {
+    const analyzer = this.selectAnalyzer(filePath);
+    if (analyzer === 'all') {
+      return;
     }
-    this.scanTimer = setTimeout(() => {
-      void this.scanWorkspace(false);
-    }, debounceMs);
+
+    this.scheduleScan(async () => {
+      await this.runScan(filePath, analyzer, false);
+    });
   }
 
   async openFinding(finding: Finding): Promise<void> {
@@ -127,16 +147,30 @@ class ContractGuardController implements vscode.Disposable {
   }
 
   private async collectWorkspaceSarif(workspacePath: string): Promise<ScanPayload> {
-    return await this.runScan(workspacePath, 'all', true);
+    return await this.runWorkspaceScan(workspacePath, true);
+  }
+
+  private async runWorkspaceScan(workspacePath: string, includeSarif: boolean): Promise<ScanPayload> {
+    const analyzers = this.getEnabledAnalyzers();
+    const payloads: ScanPayload[] = [];
+
+    for (const analyzer of analyzers) {
+      payloads.push(await this.runScan(workspacePath, analyzer, includeSarif));
+    }
+
+    return this.mergePayloads(workspacePath, payloads, includeSarif);
   }
 
   private async runScan(targetPath: string, analyzer: string, includeSarif: boolean): Promise<ScanPayload> {
     if (this.running) {
-      return await new Promise<ScanPayload>((resolve) => {
-        this.queuedScan = () => {
-          void this.runScan(targetPath, analyzer, includeSarif).then(resolve);
-        };
-      });
+      this.queuedRequest = { targetPath, analyzer, includeSarif };
+      if (!this.queuedScanPromise) {
+        this.queuedScanPromise = new Promise<ScanPayload>((resolve, reject) => {
+          this.resolveQueuedScan = resolve;
+          this.rejectQueuedScan = reject;
+        });
+      }
+      return await this.queuedScanPromise;
     }
 
     this.running = true;
@@ -172,12 +206,88 @@ class ContractGuardController implements vscode.Disposable {
       throw error;
     } finally {
       this.running = false;
-      const queued = this.queuedScan;
-      this.queuedScan = undefined;
-      if (queued) {
-        queued();
+      const queuedRequest = this.queuedRequest;
+      const resolveQueuedScan = this.resolveQueuedScan;
+      const rejectQueuedScan = this.rejectQueuedScan;
+      this.queuedRequest = undefined;
+      this.queuedScanPromise = undefined;
+      this.resolveQueuedScan = undefined;
+      this.rejectQueuedScan = undefined;
+      if (queuedRequest && resolveQueuedScan && rejectQueuedScan) {
+        void this.runScan(queuedRequest.targetPath, queuedRequest.analyzer, queuedRequest.includeSarif).then(
+          resolveQueuedScan,
+          rejectQueuedScan
+        );
       }
     }
+  }
+
+  private scheduleScan(action: () => Promise<void>): void {
+    const debounceMs = vscode.workspace.getConfiguration('contractguard').get<number>('scanDebounceMs', 600);
+    this.scheduledScanAction = action;
+    if (this.scanTimer) {
+      clearTimeout(this.scanTimer);
+    }
+    this.scanTimer = setTimeout(() => {
+      const scheduledScanAction = this.scheduledScanAction;
+      this.scheduledScanAction = undefined;
+      if (scheduledScanAction) {
+        void scheduledScanAction();
+      }
+    }, debounceMs);
+  }
+
+  private getEnabledAnalyzers(): string[] {
+    const configured = vscode.workspace.getConfiguration('contractguard').get<string[]>('enabledAnalyzers', []);
+    if (configured.length === 0) {
+      return [...analyzerIds];
+    }
+    const configuredSet = new Set(configured);
+    return analyzerIds.filter((analyzer) => configuredSet.has(analyzer));
+  }
+
+  private mergePayloads(workspacePath: string, payloads: ScanPayload[], includeSarif: boolean): ScanPayload {
+    const findings = payloads.flatMap((payload) => payload.findings);
+    const score = this.recomputeScore(
+      payloads[0]?.score ?? {
+        grade: 'A',
+        score: 100,
+        total_findings: 0,
+        block_count: 0,
+        critical_count: 0,
+        warning_count: 0,
+        info_count: 0,
+        risk_summary: '',
+        attack_surface: [],
+        top_risks: []
+      },
+      findings
+    );
+    const sarif = includeSarif
+      ? {
+          version: '2.1.0',
+          $schema: 'https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/sarif-2.1/schema/sarif-schema-2.1.0.json',
+          runs: payloads.flatMap((payload) => {
+            const runs = payload.sarif && 'runs' in payload.sarif ? payload.sarif.runs : [];
+            return Array.isArray(runs) ? runs : [];
+          })
+        }
+      : null;
+
+    const mergedPayload: ScanPayload = {
+      target: workspacePath,
+      analyzer: payloads.length === 1 ? payloads[0].analyzer : 'all',
+      engine_version: payloads[0]?.engine_version ?? 'unknown',
+      generated_at: payloads[0]?.generated_at ?? null,
+      findings,
+      score,
+      sarif
+    };
+    this.latestPayload = mergedPayload;
+    this.publishDiagnostics(findings);
+    this.tree.setFindings(findings);
+    this.updateStatusBar(mergedPayload);
+    return mergedPayload;
   }
 
   private filterFindings(findings: Finding[]): Finding[] {
@@ -207,10 +317,28 @@ class ContractGuardController implements vscode.Disposable {
       warning_count: findings.filter((item) => item.severity === 'warning').length,
       info_count: findings.filter((item) => item.severity === 'info').length
     };
+    const attackSurface = [...new Set(findings.flatMap((item) => score.attack_surface.includes(item.attack_vector) ? [item.attack_vector] : []))];
+    const topRisks = [...new Set(findings.map((item) => `[${item.severity.toUpperCase()}] ${item.description}`))].slice(0, 5);
+    const scoreValue = Math.max(
+      0,
+      100 - counts.block_count * 20 - counts.critical_count * 10 - counts.warning_count * 4 - counts.info_count
+    );
+    const grade =
+      counts.block_count > 0 ? 'F'
+      : scoreValue >= 90 ? 'A'
+      : scoreValue >= 75 ? 'B'
+      : scoreValue >= 55 ? 'C'
+      : scoreValue >= 35 ? 'D'
+      : 'F';
+
     return {
       ...score,
+      grade,
+      score: counts.block_count > 0 ? Math.min(scoreValue, 15) : scoreValue,
       ...counts,
-      total_findings: findings.length
+      total_findings: findings.length,
+      attack_surface: attackSurface,
+      top_risks: topRisks
     };
   }
 
@@ -360,7 +488,7 @@ export function activate(context: vscode.ExtensionContext): void {
       if (document.uri.scheme !== 'file') {
         return;
       }
-      controller.scheduleWorkspaceScan();
+      controller.scheduleFileScan(document.uri.fsPath);
     }),
     vscode.workspace.onDidChangeConfiguration((event) => {
       if (event.affectsConfiguration('contractguard')) {
