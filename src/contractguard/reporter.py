@@ -175,14 +175,16 @@ def render_sarif_report(
                 rule_def["fullDescription"] = {"text": f"Attack vector: {finding.attack_vector}"}
             rules.append(rule_def)
 
-        file_path = finding.location.split(":")[0] if finding.location else ""
+        file_path = finding.location or ""
         line = 1
-        if ":" in finding.location:
+        if finding.location and ":" in finding.location:
             parts = finding.location.rsplit(":", 1)
-            try:
-                line = int(parts[1])
-            except ValueError:
-                line = 1
+            if len(parts) == 2:
+                try:
+                    line = int(parts[1])
+                    file_path = parts[0]
+                except ValueError:
+                    line = 1
 
         result: dict[str, Any] = {
             "ruleId": finding.rule_id,
@@ -209,7 +211,7 @@ def render_sarif_report(
                 "tool": {
                     "driver": {
                         "name": "ContractGuard",
-                        "version": "1.1.0",
+                        "version": "1.2.0",
                         "informationUri": "https://github.com/Blackplane-Systems/contractguard",
                         "rules": rules,
                     }

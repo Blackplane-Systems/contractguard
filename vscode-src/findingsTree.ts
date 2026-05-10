@@ -20,6 +20,17 @@ function severityIcon(severity: Severity): vscode.ThemeIcon {
   }
 }
 
+function locationBasename(location: string): string {
+  const separator = location.lastIndexOf(':');
+  if (separator > 1) {
+    const suffix = location.slice(separator + 1);
+    if (/^\d+$/.test(suffix)) {
+      return path.basename(location.slice(0, separator));
+    }
+  }
+  return path.basename(location);
+}
+
 class SeverityGroupNode extends vscode.TreeItem {
   constructor(
     public readonly severity: Severity,
@@ -33,7 +44,7 @@ class SeverityGroupNode extends vscode.TreeItem {
 
 class FindingNode extends vscode.TreeItem {
   constructor(public readonly finding: Finding) {
-    const basename = finding.location ? path.basename(finding.location.split(':')[0]) : finding.rule_id;
+    const basename = finding.location ? locationBasename(finding.location) : finding.rule_id;
     super(`${finding.rule_id}  ${basename}`, vscode.TreeItemCollapsibleState.None);
     this.description = finding.description;
     this.tooltip = new vscode.MarkdownString(

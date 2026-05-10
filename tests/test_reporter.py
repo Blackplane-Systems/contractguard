@@ -1,7 +1,7 @@
-"""Tests for the HTML reporter."""
+"""Tests for report generation."""
 
 from contractguard.engine import Finding, Severity
-from contractguard.reporter import render_html_report
+from contractguard.reporter import render_html_report, render_sarif_report
 
 
 class TestRenderHtmlReport:
@@ -32,3 +32,22 @@ class TestRenderHtmlReport:
         html = render_html_report([], analyzer_type="regex", source_path="patterns.txt")
         assert "regex" in html
         assert "patterns.txt" in html
+
+    def test_sarif_preserves_windows_drive_paths(self):
+        findings = [
+            Finding(
+                rule_id="TEST002",
+                rule_name="test",
+                severity=Severity.WARNING,
+                description="Needs attention",
+                explanation="Matched",
+                suggestion="Fix it",
+                location=r"C:\repo\.env:12",
+                context="API_KEY=example",
+            )
+        ]
+
+        sarif = render_sarif_report(findings)
+        location = sarif["runs"][0]["results"][0]["locations"][0]["physicalLocation"]
+        assert location["artifactLocation"]["uri"] == "C:/repo/.env"
+        assert location["region"]["startLine"] == 12

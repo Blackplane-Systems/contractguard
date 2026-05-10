@@ -24,6 +24,21 @@ const supportedExtensions = new Set([
   '.dockerfile'
 ]);
 
+function riskSummaryForGrade(grade: string): string {
+  switch (grade) {
+    case 'A':
+      return 'Minimal risk. Good security posture.';
+    case 'B':
+      return 'Low risk. A few issues to address before production.';
+    case 'C':
+      return 'Moderate risk. Several issues need attention.';
+    case 'D':
+      return 'High risk. Significant security issues detected.';
+    default:
+      return 'CRITICAL RISK. Deployment must be blocked until issues are resolved.';
+  }
+}
+
 class ContractGuardController implements vscode.Disposable {
   private readonly diagnostics = vscode.languages.createDiagnosticCollection('contractguard');
   private readonly tree = new FindingsTreeDataProvider();
@@ -317,7 +332,13 @@ class ContractGuardController implements vscode.Disposable {
       warning_count: findings.filter((item) => item.severity === 'warning').length,
       info_count: findings.filter((item) => item.severity === 'info').length
     };
-    const attackSurface = [...new Set(findings.flatMap((item) => score.attack_surface.includes(item.attack_vector) ? [item.attack_vector] : []))];
+    const attackSurface = [
+      ...new Set(
+        findings
+          .map((item) => item.attack_vector)
+          .filter((attackVector) => typeof attackVector === 'string' && attackVector.trim().length > 0)
+      )
+    ];
     const topRisks = [...new Set(findings.map((item) => `[${item.severity.toUpperCase()}] ${item.description}`))].slice(0, 5);
     const scoreValue = Math.max(
       0,
@@ -337,6 +358,7 @@ class ContractGuardController implements vscode.Disposable {
       score: counts.block_count > 0 ? Math.min(scoreValue, 15) : scoreValue,
       ...counts,
       total_findings: findings.length,
+      risk_summary: riskSummaryForGrade(grade),
       attack_surface: attackSurface,
       top_risks: topRisks
     };
