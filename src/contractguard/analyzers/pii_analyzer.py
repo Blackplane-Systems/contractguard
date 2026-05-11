@@ -8,12 +8,14 @@ Relevant for GDPR, CCPA, HIPAA compliance — a strong cybersecurity/privacy ang
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import re
 from pathlib import Path
 from typing import Any
 
 from contractguard.engine import Finding, Severity, load_rules_for_analyzer, run_rules
+from contractguard.analyzers.file_filters import should_skip_path
 
 _PII_PATTERNS: list[tuple[str, re.Pattern, str]] = [
     ("ssn", re.compile(r"\b\d{3}-\d{2}-\d{4}\b"), "Social Security Number"),
@@ -65,8 +67,10 @@ def extract_facts(content: str, filename: str = "") -> dict[str, Any]:
     for line_num, line in enumerate(content.splitlines(), 1):
         for pii_name, regex, desc in _PII_PATTERNS:
             for match in regex.finditer(line):
-                facts["pii_count"] += 1
                 matched = match.group(0)
+                if pii_name == "ip_address" and _is_non_personal_ip(matched):
+                    continue
+                facts["pii_count"] += 1
                 if len(matched) > 8:
                     preview = matched[:3] + "***" + matched[-2:]
                 else:
@@ -106,17 +110,27 @@ def load_files(path: str | Path) -> list[tuple[str, str]]:
 
     if path.is_dir():
         for f in sorted(path.rglob("*")):
-            if f.is_file() and f.suffix.lower() not in _skip:
+            if f.is_file() and f.suffix.lower() not in _skip and not should_skip_path(f):
                 try:
                     files.append((str(f), f.read_text(encoding="utf-8", errors="replace")))
                 except Exception:
                     continue
     elif path.is_file():
+        if should_skip_path(path):
+            return files
         try:
             files.append((str(path), path.read_text(encoding="utf-8", errors="replace")))
         except Exception:
             pass
     return files
+
+
+def _is_non_personal_ip(value: str) -> bool:
+    try:
+        ip_value = ipaddress.ip_address(value)
+    except ValueError:
+        return False
+    return ip_value.is_loopback or ip_value.is_unspecified or ip_value.is_reserved
 
 
 def analyze(path: str | Path, rules_dir: str | Path) -> list[Finding]:

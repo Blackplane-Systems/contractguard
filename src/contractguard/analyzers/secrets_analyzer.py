@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from contractguard.engine import Finding, Severity, load_rules_for_analyzer, run_rules
+from contractguard.analyzers.file_filters import should_skip_path
 
 _SECRET_PATTERNS: list[tuple[str, re.Pattern, str]] = [
     ("aws_access_key", re.compile(r"(?:^|[^A-Za-z0-9/+=])(?:AKIA[0-9A-Z]{16})(?:[^A-Za-z0-9/+=]|$)"), "block"),
@@ -115,13 +116,15 @@ def load_files(path: str | Path) -> list[tuple[str, str]]:
 
     if path.is_dir():
         for f in sorted(path.rglob("*")):
-            if f.is_file() and f.suffix.lower() not in _SKIP_EXTENSIONS:
+            if f.is_file() and f.suffix.lower() not in _SKIP_EXTENSIONS and not should_skip_path(f):
                 try:
                     content = f.read_text(encoding="utf-8", errors="replace")
                     files.append((str(f), content))
                 except Exception:
                     continue
     elif path.is_file():
+        if should_skip_path(path):
+            return files
         try:
             content = path.read_text(encoding="utf-8", errors="replace")
             files.append((str(path), content))
