@@ -510,7 +510,12 @@ export function activate(context: vscode.ExtensionContext): void {
       if (document.uri.scheme !== 'file') {
         return;
       }
-      controller.scheduleFileScan(document.uri.fsPath);
+      const scanOnSaveScope = vscode.workspace.getConfiguration('contractguard').get<string>('scanOnSaveScope', 'workspace');
+      if (scanOnSaveScope === 'currentFile') {
+        controller.scheduleFileScan(document.uri.fsPath);
+        return;
+      }
+      controller.scheduleWorkspaceScan();
     }),
     vscode.workspace.onDidChangeConfiguration((event) => {
       if (event.affectsConfiguration('contractguard')) {
