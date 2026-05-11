@@ -1,8 +1,8 @@
 {
   "name": "contract-guard",
   "displayName": "contract-guard",
-  "description": "Security analysis for code, config, Dockerfiles, data payloads, and dependencies.",
-  "version": "1.2.0",
+  "description": "A VS Code extension that finds security issues in code, configs, queries, Dockerfiles, and secrets.",
+  "version": "1.2.1",
   "publisher": "BlackplaneSystems",
   "license": "Apache-2.0",
   "icon": "media/icon.png",
@@ -118,6 +118,12 @@
           "minimum": 0,
           "description": "Debounce delay for automatic scans."
         },
+        "contractguard.scanOnSaveScope": {
+          "type": "string",
+          "default": "workspace",
+          "enum": ["workspace", "currentFile"],
+          "description": "What to scan after saving a file: the whole workspace or just the active file."
+        },
         "contractguard.enabledAnalyzers": {
           "type": "array",
           "default": [
@@ -158,7 +164,7 @@
   },
   "scripts": {
     "build": "tsc -p ./tsconfig.json",
-    "package": "node -e \"require('fs').mkdirSync('dist-vsix',{recursive:true})\" && vsce package --out dist-vsix/contractguard-1.2.0.vsix",
+    "package": "node -e \"require('fs').mkdirSync('dist-vsix',{recursive:true})\" && vsce package --out dist-vsix/contractguard-1.2.1.vsix",
     "prepackage": "npm run build"
   },
   "devDependencies": {
