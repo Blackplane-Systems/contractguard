@@ -11,6 +11,7 @@ from __future__ import annotations
 import ipaddress
 import json
 import re
+import os
 from pathlib import Path
 from typing import Any
 
@@ -109,10 +110,17 @@ def load_files(path: str | Path) -> list[tuple[str, str]]:
     _skip = {".pyc", ".exe", ".dll", ".png", ".jpg", ".gif", ".zip", ".tar", ".gz"}
 
     if path.is_dir():
-        for f in sorted(path.rglob("*")):
-            if f.is_file() and f.suffix.lower() not in _skip and not should_skip_path(f):
+        for root, dirnames, filenames in os.walk(path):
+            root_path = Path(root)
+            dirnames[:] = [
+                name for name in dirnames if not should_skip_path(root_path / name)
+            ]
+            for name in sorted(filenames):
+                file_path = root_path / name
+                if file_path.suffix.lower() in _skip or should_skip_path(file_path):
+                    continue
                 try:
-                    files.append((str(f), f.read_text(encoding="utf-8", errors="replace")))
+                    files.append((str(file_path), file_path.read_text(encoding="utf-8", errors="replace")))
                 except Exception:
                     continue
     elif path.is_file():
@@ -130,7 +138,14 @@ def _is_non_personal_ip(value: str) -> bool:
         ip_value = ipaddress.ip_address(value)
     except ValueError:
         return False
-    return ip_value.is_loopback or ip_value.is_unspecified or ip_value.is_reserved
+    return (
+        ip_value.is_loopback
+        or ip_value.is_unspecified
+        or ip_value.is_reserved
+        or ip_value.is_private
+        or ip_value.is_link_local
+        or ip_value.is_multicast
+    )
 
 
 def analyze(path: str | Path, rules_dir: str | Path) -> list[Finding]:

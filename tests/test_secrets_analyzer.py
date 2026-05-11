@@ -3,8 +3,6 @@
 from pathlib import Path
 import tempfile
 
-import pytest
-
 from contractguard.analyzers.secrets_analyzer import analyze, extract_facts
 from contractguard.engine import Severity
 
@@ -118,3 +116,11 @@ class TestAnalyze:
             assert any(f.cwe for f in findings)
         finally:
             path.unlink(missing_ok=True)
+
+    def test_skips_vendor_directories(self, tmp_path):
+        skipped_dir = tmp_path / "node_modules"
+        skipped_dir.mkdir()
+        (skipped_dir / "secret.env").write_text("DB_PASSWORD=admin123\n")
+        (tmp_path / "safe.txt").write_text("Nothing here\n")
+        findings = analyze(tmp_path, RULES_DIR)
+        assert all("node_modules" not in f.location for f in findings)

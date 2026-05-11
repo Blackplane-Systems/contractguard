@@ -3,8 +3,6 @@
 from pathlib import Path
 import tempfile
 
-import pytest
-
 from contractguard.analyzers.pii_analyzer import analyze, extract_facts
 from contractguard.engine import Severity
 
@@ -50,6 +48,12 @@ class TestExtractFacts:
         assert facts["has_ssn"] is False
         assert facts["has_credit_card"] is False
 
+    def test_suppresses_non_personal_ips(self):
+        content = "bind 127.0.0.1\nlisten 0.0.0.0\nprivate 10.0.0.1\n"
+        facts = extract_facts(content)
+        assert facts["has_ip_address"] is False
+        assert facts["pii_count"] == 0
+
     def test_redacted_preview(self):
         content = '{"ssn": "123-45-6789"}'
         facts = extract_facts(content)
@@ -90,3 +94,11 @@ class TestAnalyze:
             assert any(f.attack_vector and ("GDPR" in f.attack_vector or "identity" in f.attack_vector.lower()) for f in findings)
         finally:
             path.unlink(missing_ok=True)
+
+    def test_skips_vendor_directories(self, tmp_path):
+        skipped_dir = tmp_path / "node_modules"
+        skipped_dir.mkdir()
+        (skipped_dir / "pii.txt").write_text("ssn: 123-45-6789\n")
+        (tmp_path / "safe.txt").write_text("No personal info here.\n")
+        findings = analyze(tmp_path, RULES_DIR)
+        assert all("node_modules" not in f.location for f in findings)
