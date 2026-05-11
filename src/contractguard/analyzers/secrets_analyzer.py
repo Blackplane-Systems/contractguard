@@ -7,6 +7,7 @@ and other secrets using pattern matching. This is a security-critical analyzer.
 from __future__ import annotations
 
 import re
+import os
 from pathlib import Path
 from typing import Any
 
@@ -115,11 +116,18 @@ def load_files(path: str | Path) -> list[tuple[str, str]]:
     files: list[tuple[str, str]] = []
 
     if path.is_dir():
-        for f in sorted(path.rglob("*")):
-            if f.is_file() and f.suffix.lower() not in _SKIP_EXTENSIONS and not should_skip_path(f):
+        for root, dirnames, filenames in os.walk(path):
+            root_path = Path(root)
+            dirnames[:] = [
+                name for name in dirnames if not should_skip_path(root_path / name)
+            ]
+            for name in sorted(filenames):
+                file_path = root_path / name
+                if file_path.suffix.lower() in _SKIP_EXTENSIONS or should_skip_path(file_path):
+                    continue
                 try:
-                    content = f.read_text(encoding="utf-8", errors="replace")
-                    files.append((str(f), content))
+                    content = file_path.read_text(encoding="utf-8", errors="replace")
+                    files.append((str(file_path), content))
                 except Exception:
                     continue
     elif path.is_file():
