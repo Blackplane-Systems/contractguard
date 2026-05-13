@@ -288,8 +288,6 @@ def analyze(path: str | Path, rules_dir: str | Path) -> list[Finding]:
             f.location = source
             if is_fixture_path(source):
                 f.confidence = "low"
-        if facts["vulnerabilities"]:
-            findings = [item for item in findings if item.rule_id == "DEP003"]
         all_findings.extend(findings)
 
         # Direct findings for each vulnerability

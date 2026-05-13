@@ -287,6 +287,8 @@ def analyze(path: str | Path, rules_dir: str | Path) -> list[Finding]:
             if is_fixture_path(source):
                 f.confidence = "low"
 
+        all_findings.extend(findings)
+
         # Also generate direct findings for each secret found (bypass rule engine)
         for pattern_name, line_num, preview, confidence in facts["secret_items"]:
             sev_map = {n: s for n, _, s in _SECRET_PATTERNS for n2 in [n] if n2 == pattern_name}
@@ -310,8 +312,5 @@ def analyze(path: str | Path, rules_dir: str | Path) -> list[Finding]:
                 confidence=confidence,
             )
             all_findings.append(finding)
-
-        if not facts["secret_items"]:
-            all_findings.extend(findings)
 
     return all_findings

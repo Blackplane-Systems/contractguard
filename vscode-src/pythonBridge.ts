@@ -23,6 +23,10 @@ function getMinimumConfidence(): string {
   return ['low', 'medium', 'high'].includes(configured) ? configured : 'medium';
 }
 
+function getIncludeFixtures(): boolean {
+  return getConfig().get<boolean>('includeFixtures', false);
+}
+
 function getPythonExecutable(): string {
   const configured = getConfig().get<string>('pythonPath', '').trim();
   if (configured) {
@@ -77,6 +81,10 @@ export async function runContractGuardScan(
     '--min-confidence',
     getMinimumConfidence()
   ];
+
+  if (getIncludeFixtures()) {
+    args.push('--include-fixtures');
+  }
 
   if (dbPath) {
     args.push('--db', dbPath);

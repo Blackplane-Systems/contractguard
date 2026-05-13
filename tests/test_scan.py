@@ -39,6 +39,7 @@ def test_serialize_finding_shape():
             analyzer="secrets",
             rules_dir=Path(__file__).resolve().parent.parent / "rules",
             min_confidence="low",
+            include_fixtures=True,
         )
     ).findings
     payload = serialize_finding(findings[0])

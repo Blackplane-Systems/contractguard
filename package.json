@@ -2,7 +2,7 @@
   "name": "contract-guard",
   "displayName": "contract-guard",
   "description": "A VS Code extension that finds security issues in code, configs, queries, Dockerfiles, and secrets.",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "publisher": "BlackplaneSystems",
   "license": "Apache-2.0",
   "icon": "media/icon.png",
@@ -131,6 +131,11 @@
           "enum": ["low", "medium", "high"],
           "description": "Minimum finding confidence shown by the VS Code client and requested from the scanner."
         },
+        "contractguard.includeFixtures": {
+          "type": "boolean",
+          "default": false,
+          "description": "Include findings from fixture-like paths (tests, samples, docs)."
+        },
         "contractguard.enabledAnalyzers": {
           "type": "array",
           "default": [
@@ -171,7 +176,7 @@
   },
   "scripts": {
     "build": "tsc -p ./tsconfig.json",
-    "package": "node -e \"require('fs').mkdirSync('dist-vsix',{recursive:true})\" && vsce package --out dist-vsix/contractguard-2.0.0.vsix",
+    "package": "node -e \"require('fs').mkdirSync('dist-vsix',{recursive:true})\" && vsce package --out dist-vsix/contractguard-2.1.0.vsix",
     "prepackage": "npm run build"
   },
   "devDependencies": {

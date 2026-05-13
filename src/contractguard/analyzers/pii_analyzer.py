@@ -170,7 +170,7 @@ def extract_facts(content: str, filename: str = "") -> dict[str, Any]:
         "has_passport": False,
         "has_medical_record": False,
         "pii_field_names_count": 0,
-        "pii_items": [],  # list of (type, line, preview)
+        "pii_items": [],  # list of (pii_name, line_num, preview, description)
         "pii_details": [],  # list of (type, line, preview, description, confidence)
     }
 

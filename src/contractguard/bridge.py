@@ -21,6 +21,7 @@ def scan(
     rules_dir: Path | None = typer.Option(None, "--rules-dir", help="Override rules directory."),
     db_path: str | None = typer.Option(None, "--db", help="SQLite database used for SQL EXPLAIN mode."),
     min_confidence: str = typer.Option("medium", "--min-confidence", help="Minimum confidence: low, medium, high."),
+    include_fixtures: bool = typer.Option(False, "--include-fixtures", help="Include findings from tests/samples/docs."),
     include_sarif: bool = typer.Option(False, "--include-sarif", help="Include SARIF payload in the response."),
 ) -> None:
     result = scan_target(
@@ -30,6 +31,7 @@ def scan(
             rules_dir=rules_dir,
             db_path=db_path,
             min_confidence=min_confidence,
+            include_fixtures=include_fixtures,
         ),
         include_sarif=include_sarif,
     )
@@ -43,9 +45,17 @@ def findings(
     rules_dir: Path | None = typer.Option(None, "--rules-dir", help="Override rules directory."),
     db_path: str | None = typer.Option(None, "--db", help="SQLite database used for SQL EXPLAIN mode."),
     min_confidence: str = typer.Option("medium", "--min-confidence", help="Minimum confidence: low, medium, high."),
+    include_fixtures: bool = typer.Option(False, "--include-fixtures", help="Include findings from tests/samples/docs."),
 ) -> None:
     result = scan_target(
-        ScanTarget(path=path, analyzer=analyzer, rules_dir=rules_dir, db_path=db_path, min_confidence=min_confidence)
+        ScanTarget(
+            path=path,
+            analyzer=analyzer,
+            rules_dir=rules_dir,
+            db_path=db_path,
+            min_confidence=min_confidence,
+            include_fixtures=include_fixtures,
+        )
     )
     typer.echo(findings_to_json(result.findings))
 

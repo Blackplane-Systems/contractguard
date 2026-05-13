@@ -132,7 +132,7 @@ def load_config_files(path: str | Path) -> list[tuple[str, str]]:
                 except Exception:
                     continue
     elif path.is_file():
-        if should_skip_large_file(path) or path.name.casefold() in _SKIP_CONFIG_NAMES:
+        if should_skip_path(path) or should_skip_large_file(path) or path.name.casefold() in _SKIP_CONFIG_NAMES:
             return files
         try:
             files.append((str(path), path.read_text(encoding="utf-8", errors="replace")))

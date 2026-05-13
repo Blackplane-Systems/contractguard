@@ -9,7 +9,7 @@ from typing import Any, Callable
 
 from contractguard import __version__
 from contractguard.engine import Finding, Severity
-from contractguard.analyzers.file_filters import confidence_allowed
+from contractguard.analyzers.file_filters import confidence_allowed, is_fixture_path
 from contractguard.reporter import render_sarif_report
 from contractguard.scorer import SecurityScore, compute_score
 
@@ -36,6 +36,7 @@ class ScanTarget:
     rules_dir: Path | None = None
     db_path: str | None = None
     min_confidence: str = "medium"
+    include_fixtures: bool = False
 
 
 @dataclass
@@ -124,6 +125,7 @@ def scan_target(target: ScanTarget, include_sarif: bool = False) -> ScanResult:
         rules_dir=rules_dir,
         db_path=target.db_path,
         min_confidence=target.min_confidence,
+        include_fixtures=target.include_fixtures,
     )
     score = compute_score(findings)
     sarif = render_sarif_report(findings, analyzer_type=analyzer) if include_sarif else None
@@ -143,6 +145,7 @@ def run_scan(
     rules_dir: str | Path | None = None,
     db_path: str | None = None,
     min_confidence: str = "medium",
+    include_fixtures: bool = False,
 ) -> list[Finding]:
     registry = _get_analyzer_registry()
     rules_path = resolve_rules_dir(Path(rules_dir) if rules_dir else None)
@@ -160,15 +163,24 @@ def run_scan(
                     db_path=db_path,
                 )
             )
-        return _filter_findings_by_confidence(findings, min_confidence)
+        return _filter_findings_by_fixtures(
+            _filter_findings_by_confidence(findings, min_confidence),
+            include_fixtures,
+        )
 
-    return _filter_findings_by_confidence(_run_analyzer(
-        analyzer_id=analyzer,
-        module_path=registry[analyzer],
-        path=target_path,
-        rules_path=rules_path,
-        db_path=db_path,
-    ), min_confidence)
+    return _filter_findings_by_fixtures(
+        _filter_findings_by_confidence(
+            _run_analyzer(
+                analyzer_id=analyzer,
+                module_path=registry[analyzer],
+                path=target_path,
+                rules_path=rules_path,
+                db_path=db_path,
+            ),
+            min_confidence,
+        ),
+        include_fixtures,
+    )
 
 
 def _load_analyzer(module_path: str) -> AnalyzerFn:
@@ -224,6 +236,29 @@ def _invoke_analyzer(
 def _filter_findings_by_confidence(findings: list[Finding], min_confidence: str) -> list[Finding]:
     minimum = min_confidence if min_confidence in {"low", "medium", "high"} else "medium"
     return [finding for finding in findings if confidence_allowed(finding.confidence, minimum)]
+
+
+def _location_to_path(location: str) -> str:
+    if not location:
+        return ""
+    if ":" not in location:
+        return location
+    head, tail = location.rsplit(":", 1)
+    if tail.isdigit():
+        return head
+    return location
+
+
+def _filter_findings_by_fixtures(findings: list[Finding], include_fixtures: bool) -> list[Finding]:
+    if include_fixtures:
+        return findings
+    filtered: list[Finding] = []
+    for finding in findings:
+        location_path = _location_to_path(finding.location)
+        if location_path and is_fixture_path(location_path):
+            continue
+        filtered.append(finding)
+    return filtered
 
 
 def summarize_findings(findings: list[Finding]) -> dict[str, int]:

@@ -118,6 +118,7 @@ def analyze(
     report_sarif: Optional[Path] = typer.Option(None, "--report-sarif", help="Write SARIF report"),
     db: Optional[str] = typer.Option(None, "--db", help="SQLite DB path for EXPLAIN mode (sql only)"),
     min_confidence: str = typer.Option("medium", "--min-confidence", help="Minimum confidence: low, medium, high"),
+    include_fixtures: bool = typer.Option(False, "--include-fixtures", help="Include findings from tests/samples/docs"),
     ci: bool = typer.Option(False, "--ci", help="CI mode: exit code 2 on critical or block findings"),
     show_score: bool = typer.Option(False, "--score", help="Show security grade after analysis"),
     record: bool = typer.Option(False, "--record", help="Record scan to history database"),
@@ -142,6 +143,7 @@ def analyze(
         rules_dir=rules_path,
         db_path=db,
         min_confidence=min_confidence,
+        include_fixtures=include_fixtures,
     )
     ci_fail = _print_findings(findings, ci_mode=ci)
 
@@ -181,6 +183,7 @@ def score(
     path: Path = typer.Option(".", "--path", "-p", help="Project root to scan"),
     rules_dir: Optional[Path] = typer.Option(None, "--rules-dir", "-r"),
     min_confidence: str = typer.Option("medium", "--min-confidence", help="Minimum confidence: low, medium, high"),
+    include_fixtures: bool = typer.Option(False, "--include-fixtures", help="Include findings from tests/samples/docs"),
 ) -> None:
     try:
         rules_path = resolve_rules_dir(rules_dir)
@@ -193,7 +196,13 @@ def score(
         raise typer.Exit(1)
 
     console.print("[bold]Running full security scan...[/bold]")
-    findings = run_scan(path=path, analyzer="all", rules_dir=rules_path, min_confidence=min_confidence)
+    findings = run_scan(
+        path=path,
+        analyzer="all",
+        rules_dir=rules_path,
+        min_confidence=min_confidence,
+        include_fixtures=include_fixtures,
+    )
     _print_score(findings)
 
 
