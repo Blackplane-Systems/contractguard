@@ -36,10 +36,20 @@ class TestExtractFacts:
         facts = extract_facts(content)
         assert facts["default_password"] is True
 
+    def test_compose_default_password(self):
+        content = "DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@db/app\n"
+        facts = extract_facts(content)
+        assert facts["default_password"] is True
+
     def test_ssl_disabled(self):
         content = "ssl_enabled: false\n"
         facts = extract_facts(content)
         assert facts["ssl_disabled"] is True
+
+    def test_smtp_starttls_does_not_count_as_ssl_disabled(self):
+        content = "SMTP_USE_STARTTLS=true\nSMTP_USE_SSL=false\n"
+        facts = extract_facts(content)
+        assert facts["ssl_disabled"] is False
 
     def test_wildcard_host(self):
         content = "ALLOWED_HOSTS=*\n"

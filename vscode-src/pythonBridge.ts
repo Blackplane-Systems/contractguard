@@ -18,6 +18,11 @@ function getBundledRulesPath(context: vscode.ExtensionContext): string {
   return configured ? configured : path.join(context.extensionPath, 'rules');
 }
 
+function getMinimumConfidence(): string {
+  const configured = getConfig().get<string>('minimumConfidence', 'medium').trim();
+  return ['low', 'medium', 'high'].includes(configured) ? configured : 'medium';
+}
+
 function getPythonExecutable(): string {
   const configured = getConfig().get<string>('pythonPath', '').trim();
   if (configured) {
@@ -68,7 +73,9 @@ export async function runContractGuardScan(
     '--analyzer',
     analyzer,
     '--rules-dir',
-    getBundledRulesPath(context)
+    getBundledRulesPath(context),
+    '--min-confidence',
+    getMinimumConfidence()
   ];
 
   if (dbPath) {

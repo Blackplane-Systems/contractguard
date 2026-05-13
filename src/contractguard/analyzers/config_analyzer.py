@@ -13,6 +13,15 @@ from typing import Any
 import yaml
 
 from contractguard.engine import Finding, Severity, load_rules_for_analyzer, run_rules
+from contractguard.analyzers.file_filters import is_fixture_path, should_skip_large_file, should_skip_path
+
+_SKIP_CONFIG_NAMES = {
+    "package-lock.json",
+    "package.json",
+    "pnpm-lock.yaml",
+    "poetry.lock",
+    "yarn.lock",
+}
 
 
 def extract_facts(content: str, filename: str = "") -> dict[str, Any]:
@@ -63,7 +72,8 @@ def extract_facts(content: str, filename: str = "") -> dict[str, Any]:
             facts["insecure_secret_key"] = True
             facts["dangerous_settings_count"] += 1
 
-    if re.search(r'(?:password|passwd|pwd)\s*[=:]\s*[\'"]?(?:admin|password|123456|root|default|test)[\'"]?', content, re.I):
+    if re.search(r'(?:password|passwd|pwd)\s*[=:]\s*[\'"]?(?:admin|password|123456|root|default|test)[\'"]?', content, re.I) or \
+       re.search(r'\$\{[^}]*?(?:password|passwd|pwd)[^}]*:-(?:admin|password|postgres|root|default|test)', content, re.I):
         facts["default_password"] = True
         facts["dangerous_settings_count"] += 1
 
@@ -71,7 +81,15 @@ def extract_facts(content: str, filename: str = "") -> dict[str, Any]:
         facts["exposed_admin_port"] = True
         facts["dangerous_settings_count"] += 1
 
-    if re.search(r'(?:ssl|tls|https)[_\w]*\s*[=:]\s*(?:false|0|off|no|disabled)', content, re.I):
+    ssl_disabled_lines = [
+        line for line in lines
+        if re.search(r'(?:ssl|tls|https)[_\w]*\s*[=:]\s*(?:false|0|off|no|disabled)', line, re.I)
+    ]
+    ssl_disabled_lines = [
+        line for line in ssl_disabled_lines
+        if not ("smtp" in line.lower() and re.search(r'smtp_use_starttls\s*[=:]\s*(?:true|1|yes|on)', content, re.I))
+    ]
+    if ssl_disabled_lines:
         facts["ssl_disabled"] = True
         facts["dangerous_settings_count"] += 1
 
@@ -106,12 +124,16 @@ def load_config_files(path: str | Path) -> list[tuple[str, str]]:
 
     if path.is_dir():
         for f in sorted(path.rglob("*")):
+            if should_skip_path(f) or should_skip_large_file(f) or f.name.casefold() in _SKIP_CONFIG_NAMES:
+                continue
             if f.is_file() and (f.suffix.lower() in config_exts or f.stem.lower() in config_names):
                 try:
                     files.append((str(f), f.read_text(encoding="utf-8", errors="replace")))
                 except Exception:
                     continue
     elif path.is_file():
+        if should_skip_large_file(path) or path.name.casefold() in _SKIP_CONFIG_NAMES:
+            return files
         try:
             files.append((str(path), path.read_text(encoding="utf-8", errors="replace")))
         except Exception:
@@ -131,6 +153,8 @@ def analyze(path: str | Path, rules_dir: str | Path) -> list[Finding]:
         for f in findings:
             f.location = source
             f.context = f"Config file: {Path(source).name}"
+            if is_fixture_path(source):
+                f.confidence = "low"
         all_findings.extend(findings)
 
     return all_findings

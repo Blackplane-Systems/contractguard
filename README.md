@@ -10,6 +10,8 @@
 - Publish inline diagnostics in the editor
 - Export SARIF for external security workflows
 - Show an overall security score in the status bar
+- Filter low-confidence fixture/doc/test findings by default
+- Continue scans when one analyzer has a runtime problem
 
 ## What it checks
 
@@ -21,6 +23,8 @@
 - Insecure configuration
 - Dockerfile issues
 - Dependency vulnerabilities
+- Python `requirements.txt` and `pyproject.toml`
+- npm `package-lock.json` advisories from the bundled local database
 
 ## Commands
 
@@ -43,12 +47,15 @@ If the Python runtime dependencies are missing, run:
 - `contractguard.pythonPath`
 - `contractguard.scanOnSave`
 - `contractguard.scanDebounceMs`
+- `contractguard.scanOnSaveScope`
 - `contractguard.enabledAnalyzers`
 - `contractguard.disabledRules`
+- `contractguard.minimumConfidence`
 - `contractguard.rulesDirectory`
 - `contractguard.sqlExplainDatabase`
 
 ## Notes
 
 - The extension runs analysis locally.
+- The default minimum confidence is `medium`; use `low` for audit mode when you want sample/test fixtures included.
 - SARIF export is available for CI and external security tooling.

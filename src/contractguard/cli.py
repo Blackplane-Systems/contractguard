@@ -117,6 +117,7 @@ def analyze(
     report_json: Optional[Path] = typer.Option(None, "--report-json", help="Write JSON report"),
     report_sarif: Optional[Path] = typer.Option(None, "--report-sarif", help="Write SARIF report"),
     db: Optional[str] = typer.Option(None, "--db", help="SQLite DB path for EXPLAIN mode (sql only)"),
+    min_confidence: str = typer.Option("medium", "--min-confidence", help="Minimum confidence: low, medium, high"),
     ci: bool = typer.Option(False, "--ci", help="CI mode: exit code 2 on critical or block findings"),
     show_score: bool = typer.Option(False, "--score", help="Show security grade after analysis"),
     record: bool = typer.Option(False, "--record", help="Record scan to history database"),
@@ -135,7 +136,13 @@ def analyze(
         console.print(f"[red]Error:[/red] Unknown type '{type}'. Use: {', '.join(_ANALYZER_TYPES)}")
         raise typer.Exit(1)
 
-    findings = run_scan(path=path, analyzer=type, rules_dir=rules_path, db_path=db)
+    findings = run_scan(
+        path=path,
+        analyzer=type,
+        rules_dir=rules_path,
+        db_path=db,
+        min_confidence=min_confidence,
+    )
     ci_fail = _print_findings(findings, ci_mode=ci)
 
     if show_score or type == "all":
@@ -173,6 +180,7 @@ def analyze(
 def score(
     path: Path = typer.Option(".", "--path", "-p", help="Project root to scan"),
     rules_dir: Optional[Path] = typer.Option(None, "--rules-dir", "-r"),
+    min_confidence: str = typer.Option("medium", "--min-confidence", help="Minimum confidence: low, medium, high"),
 ) -> None:
     try:
         rules_path = resolve_rules_dir(rules_dir)
@@ -185,7 +193,7 @@ def score(
         raise typer.Exit(1)
 
     console.print("[bold]Running full security scan...[/bold]")
-    findings = run_scan(path=path, analyzer="all", rules_dir=rules_path)
+    findings = run_scan(path=path, analyzer="all", rules_dir=rules_path, min_confidence=min_confidence)
     _print_score(findings)
 
 
@@ -236,6 +244,7 @@ def watch(
     path: Path = typer.Option(".", "--path", "-p", help="Directory to watch"),
     type: str = typer.Option("all", "--type", "-t", help="Analyzer type to run"),
     rules_dir: Optional[Path] = typer.Option(None, "--rules-dir", "-r"),
+    min_confidence: str = typer.Option("medium", "--min-confidence", help="Minimum confidence: low, medium, high"),
     interval: int = typer.Option(3, "--interval", help="Seconds between scans"),
 ) -> None:
     try:
@@ -272,7 +281,7 @@ def watch(
 
             if changed or new_files:
                 console.print(f"\n[yellow]Change detected ({len(changed | new_files)} file(s)). Re-scanning...[/yellow]")
-                findings = run_scan(path=path, analyzer=type, rules_dir=rules_path)
+                findings = run_scan(path=path, analyzer=type, rules_dir=rules_path, min_confidence=min_confidence)
                 _print_findings(findings)
                 _print_score(findings)
                 last_mtimes = current

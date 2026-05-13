@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from contractguard.scan import ScanTarget, list_analyzers, scan_target, serialize_finding
+from contractguard.scan import ScanTarget, list_analyzers, run_scan, scan_target, serialize_finding
 
 
 def test_list_analyzers_excludes_csv():
@@ -38,8 +38,27 @@ def test_serialize_finding_shape():
             path=Path(__file__).resolve().parent.parent / "samples" / "secrets",
             analyzer="secrets",
             rules_dir=Path(__file__).resolve().parent.parent / "rules",
+            min_confidence="low",
         )
     ).findings
     payload = serialize_finding(findings[0])
     assert payload["rule_id"]
     assert payload["severity"]
+
+
+def test_scan_filters_low_confidence_fixture_findings_by_default():
+    findings = scan_target(
+        ScanTarget(
+            path=Path(__file__).resolve().parent.parent / "samples" / "secrets",
+            analyzer="secrets",
+            rules_dir=Path(__file__).resolve().parent.parent / "rules",
+        )
+    ).findings
+    assert findings == []
+
+
+def test_analyzer_runtime_error_is_reported(monkeypatch, tmp_path):
+    monkeypatch.setattr("contractguard.scan._get_analyzer_registry", lambda: {"broken": "contractguard.missing"})
+    findings = run_scan(tmp_path, analyzer="all", rules_dir=Path(__file__).resolve().parent.parent / "rules")
+    assert len(findings) == 1
+    assert findings[0].rule_id == "CG-RUNTIME-BROKEN"

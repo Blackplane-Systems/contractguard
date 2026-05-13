@@ -54,6 +54,31 @@ class TestExtractFacts:
         assert facts["has_ip_address"] is False
         assert facts["pii_count"] == 0
 
+    def test_does_not_treat_numeric_code_constants_as_phone(self):
+        content = "this.state = (1664525 * this.state + 1013904223) >>> 0;\n"
+        facts = extract_facts(content, "math.ts")
+        assert facts["has_phone"] is False
+        assert facts["pii_count"] == 0
+
+    def test_does_not_treat_regular_dates_as_dob(self):
+        content = '"dateadded","2026-05-13 08:25:10","last_online","2026-05-13 08:25:10"\n'
+        facts = extract_facts(content, "feed.csv")
+        assert facts["has_dob"] is False
+        assert facts["pii_count"] == 0
+
+    def test_credit_cards_require_luhn(self):
+        content = '{"transitivity": 0.5191742775433075}\n'
+        facts = extract_facts(content, "model.json")
+        assert facts["has_credit_card"] is False
+        assert facts["pii_count"] == 0
+
+    def test_source_contact_email_is_low_confidence(self, tmp_path):
+        source = tmp_path / "ProductDetail.tsx"
+        source.write_text("Contact: atelier@example.com\n")
+        findings = analyze(source, RULES_DIR)
+        assert findings
+        assert all(f.confidence == "low" for f in findings)
+
     def test_redacted_preview(self):
         content = '{"ssn": "123-45-6789"}'
         facts = extract_facts(content)

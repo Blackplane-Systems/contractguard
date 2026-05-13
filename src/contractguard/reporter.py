@@ -7,6 +7,7 @@ from typing import Any
 
 from jinja2 import BaseLoader, Environment
 
+from contractguard import __version__
 from contractguard.engine import Finding, Severity
 from contractguard.scorer import compute_score
 
@@ -211,7 +212,7 @@ def render_sarif_report(
                 "tool": {
                     "driver": {
                         "name": "ContractGuard",
-                        "version": "1.2.0",
+                        "version": __version__,
                         "informationUri": "https://github.com/Blackplane-Systems/contractguard",
                         "rules": rules,
                     }

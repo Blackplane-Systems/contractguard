@@ -12,6 +12,16 @@ from pathlib import Path
 from typing import Any
 
 from contractguard.engine import Finding, Rule, load_rules_for_analyzer, run_rules
+from contractguard.analyzers.file_filters import should_skip_path
+
+_SKIP_JSON_NAMES = {
+    "composer.lock",
+    "package.json",
+    "package-lock.json",
+    "pnpm-lock.yaml",
+    "tsconfig.json",
+    "tsconfig.build.json",
+}
 
 
 def _type_label(val: Any) -> str:
@@ -111,8 +121,12 @@ def load_json_samples(path: str | Path) -> list[dict]:
 
     if path.is_dir():
         for f in sorted(path.glob("*.json")):
+            if f.name.casefold() in _SKIP_JSON_NAMES or should_skip_path(f):
+                continue
             objects.extend(_load_single(f))
     else:
+        if path.name.casefold() in _SKIP_JSON_NAMES or should_skip_path(path):
+            return []
         objects.extend(_load_single(path))
 
     return objects

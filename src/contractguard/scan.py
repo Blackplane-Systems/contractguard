@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import importlib
 import json
+import datetime
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Callable
 
 from contractguard import __version__
 from contractguard.engine import Finding, Severity
+from contractguard.analyzers.file_filters import confidence_allowed
 from contractguard.reporter import render_sarif_report
 from contractguard.scorer import SecurityScore, compute_score
 
@@ -33,6 +35,7 @@ class ScanTarget:
     analyzer: str = "all"
     rules_dir: Path | None = None
     db_path: str | None = None
+    min_confidence: str = "medium"
 
 
 @dataclass
@@ -115,7 +118,13 @@ def scan_target(target: ScanTarget, include_sarif: bool = False) -> ScanResult:
         raise ValueError(f"Unsupported analyzer '{analyzer}'. Supported values: {supported}")
 
     rules_dir = resolve_rules_dir(target.rules_dir)
-    findings = run_scan(path=path, analyzer=analyzer, rules_dir=rules_dir, db_path=target.db_path)
+    findings = run_scan(
+        path=path,
+        analyzer=analyzer,
+        rules_dir=rules_dir,
+        db_path=target.db_path,
+        min_confidence=target.min_confidence,
+    )
     score = compute_score(findings)
     sarif = render_sarif_report(findings, analyzer_type=analyzer) if include_sarif else None
     return ScanResult(
@@ -124,6 +133,7 @@ def scan_target(target: ScanTarget, include_sarif: bool = False) -> ScanResult:
         findings=findings,
         score=score,
         sarif=sarif,
+        generated_at=datetime.datetime.now(datetime.timezone.utc).isoformat(),
     )
 
 
@@ -132,6 +142,7 @@ def run_scan(
     analyzer: str = "all",
     rules_dir: str | Path | None = None,
     db_path: str | None = None,
+    min_confidence: str = "medium",
 ) -> list[Finding]:
     registry = _get_analyzer_registry()
     rules_path = resolve_rules_dir(Path(rules_dir) if rules_dir else None)
@@ -141,28 +152,61 @@ def run_scan(
         findings: list[Finding] = []
         for analyzer_id, module_path in registry.items():
             findings.extend(
-                _invoke_analyzer(
+                _run_analyzer(
                     analyzer_id=analyzer_id,
-                    analyzer_fn=_load_analyzer(module_path),
+                    module_path=module_path,
                     path=target_path,
                     rules_path=rules_path,
                     db_path=db_path,
                 )
             )
-        return findings
+        return _filter_findings_by_confidence(findings, min_confidence)
 
-    return _invoke_analyzer(
+    return _filter_findings_by_confidence(_run_analyzer(
         analyzer_id=analyzer,
-        analyzer_fn=_load_analyzer(registry[analyzer]),
+        module_path=registry[analyzer],
         path=target_path,
         rules_path=rules_path,
         db_path=db_path,
-    )
+    ), min_confidence)
 
 
 def _load_analyzer(module_path: str) -> AnalyzerFn:
     module = importlib.import_module(module_path)
     return getattr(module, "analyze")
+
+
+def _run_analyzer(
+    analyzer_id: str,
+    module_path: str,
+    path: Path,
+    rules_path: Path,
+    db_path: str | None,
+) -> list[Finding]:
+    try:
+        return _invoke_analyzer(
+            analyzer_id=analyzer_id,
+            analyzer_fn=_load_analyzer(module_path),
+            path=path,
+            rules_path=rules_path,
+            db_path=db_path,
+        )
+    except Exception as exc:
+        return [
+            Finding(
+                rule_id=f"CG-RUNTIME-{analyzer_id.upper()}",
+                rule_name=f"{analyzer_id}_runtime_error",
+                severity=Severity.WARNING,
+                description=f"{analyzer_id} analyzer failed to run.",
+                explanation=str(exc),
+                suggestion="Install runtime dependencies or disable this analyzer until the runtime is fixed.",
+                location=str(path),
+                context=type(exc).__name__,
+                attack_vector="Analyzer failure may hide issues in this category.",
+                cwe="",
+                confidence="high",
+            )
+        ]
 
 
 def _invoke_analyzer(
@@ -175,6 +219,11 @@ def _invoke_analyzer(
     if analyzer_id == "sql":
         return analyzer_fn(path, rules_path, db_path=db_path)
     return analyzer_fn(path, rules_path)
+
+
+def _filter_findings_by_confidence(findings: list[Finding], min_confidence: str) -> list[Finding]:
+    minimum = min_confidence if min_confidence in {"low", "medium", "high"} else "medium"
+    return [finding for finding in findings if confidence_allowed(finding.confidence, minimum)]
 
 
 def summarize_findings(findings: list[Finding]) -> dict[str, int]:

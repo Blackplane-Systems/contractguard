@@ -7,6 +7,9 @@ import pytest
 
 from contractguard.analyzers.dependency_analyzer import (
     analyze,
+    extract_facts_from_dependency_file,
+    extract_facts_from_package_json,
+    extract_facts_from_pyproject,
     extract_facts_from_requirements,
     _parse_version,
     _version_matches,
@@ -63,6 +66,12 @@ class TestExtractFacts:
         facts = extract_facts_from_requirements(content)
         assert facts["total_packages"] == 1
 
+    def test_range_versions_are_unpinned_not_vulnerable(self):
+        content = "requests>=2.0.0\n"
+        facts = extract_facts_from_requirements(content)
+        assert facts["has_unpinned_packages"] is True
+        assert facts["vulnerable_count"] == 0
+
     def test_multiple_vulns(self):
         content = "django==2.2.0\nflask==0.12.0\nurllib3==1.24.0\ncryptography==2.1.0\n"
         facts = extract_facts_from_requirements(content)
@@ -72,6 +81,26 @@ class TestExtractFacts:
         content = "django==2.2.0\ncryptography==2.1.0\n"
         facts = extract_facts_from_requirements(content)
         assert facts["critical_vuln_count"] >= 1
+
+    def test_pyproject_dependencies_are_scanned(self):
+        content = """
+[project]
+dependencies = ["django==2.2.0", "requests>=2.31.0"]
+"""
+        facts = extract_facts_from_pyproject(content)
+        assert facts["has_vulnerable_packages"] is True
+        assert facts["has_unpinned_packages"] is True
+
+    def test_package_lock_dependencies_are_scanned(self):
+        content = '{"packages":{"node_modules/lodash":{"version":"4.17.20"}}}'
+        facts = extract_facts_from_package_json(content, locked=True)
+        assert facts["has_vulnerable_packages"] is True
+        assert any(item[2] == "CVE-2021-23337" for item in facts["vulnerabilities"])
+
+    def test_no_placeholder_cve_ids(self):
+        content = "django==2.2.0\n"
+        facts = extract_facts_from_dependency_file("requirements.txt", content)
+        assert all("XXXXX" not in item[2] for item in facts["vulnerabilities"])
 
 
 class TestAnalyze:

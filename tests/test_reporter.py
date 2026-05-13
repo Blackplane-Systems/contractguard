@@ -1,5 +1,6 @@
 """Tests for report generation."""
 
+from contractguard import __version__
 from contractguard.engine import Finding, Severity
 from contractguard.reporter import render_html_report, render_sarif_report
 
@@ -51,3 +52,7 @@ class TestRenderHtmlReport:
         location = sarif["runs"][0]["results"][0]["locations"][0]["physicalLocation"]
         assert location["artifactLocation"]["uri"] == "C:/repo/.env"
         assert location["region"]["startLine"] == 12
+
+    def test_sarif_uses_package_version(self):
+        sarif = render_sarif_report([])
+        assert sarif["runs"][0]["tool"]["driver"]["version"] == __version__

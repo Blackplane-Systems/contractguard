@@ -55,9 +55,24 @@ class TestExtractFacts:
         facts = extract_facts(content)
         assert facts["has_jwt"] is True
 
+    def test_detects_smtp_app_password(self):
+        content = "SMTP_PASSWORD=abcd efgh ijkl mnop\n"
+        facts = extract_facts(content, ".env")
+        assert facts["secret_count"] >= 1
+
+    def test_plain_uuid_is_not_heroku_key(self):
+        content = "request_id = '123e4567-e89b-12d3-a456-426614174000'\n"
+        facts = extract_facts(content, "events.py")
+        assert facts["secret_count"] == 0
+
     def test_clean_file_no_secrets(self):
         content = "# This is a clean config\nDEBUG=false\nPORT=8080\n"
         facts = extract_facts(content)
+        assert facts["secret_count"] == 0
+
+    def test_ignores_token_variable_expression(self):
+        content = "const token = header?.startsWith('Bearer ') ? header.slice(7) : undefined;\n"
+        facts = extract_facts(content, "api.ts")
         assert facts["secret_count"] == 0
 
     def test_redacted_preview(self):
@@ -124,3 +139,18 @@ class TestAnalyze:
         (tmp_path / "safe.txt").write_text("Nothing here\n")
         findings = analyze(tmp_path, RULES_DIR)
         assert all("node_modules" not in f.location for f in findings)
+
+    def test_fixture_findings_are_low_confidence(self, tmp_path):
+        samples_dir = tmp_path / "samples"
+        samples_dir.mkdir()
+        (samples_dir / "leaked.env").write_text("DATABASE_URL=postgresql://user:pass@example/db\n")
+        findings = analyze(samples_dir, RULES_DIR)
+        assert findings
+        assert all(f.confidence == "low" for f in findings)
+
+    def test_readme_placeholder_token_is_low_confidence(self, tmp_path):
+        readme = tmp_path / "README.md"
+        readme.write_text("storefrontAccessToken: 'your-storefront-access-token'\n")
+        findings = analyze(readme, RULES_DIR)
+        assert findings
+        assert all(f.confidence == "low" for f in findings)
