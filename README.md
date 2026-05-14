@@ -15,16 +15,14 @@
 
 ## What it checks
 
-- JSON schema inconsistencies
-- SQL query risks and anti-patterns
-- Regex complexity and ReDoS risks
-- Hardcoded secrets
-- PII exposure
-- Insecure configuration
-- Dockerfile issues
-- Dependency vulnerabilities
-- Python `requirements.txt` and `pyproject.toml`
-- npm `package-lock.json` advisories from the bundled local database
+- JSON schema drift, including type mismatches, optional fields, and nullable values across samples.
+- SQL query risks (for example: `SELECT *`, missing `WHERE` in `DELETE`, unsafe patterns).
+- Regex complexity and ReDoS risks, including nested quantifiers and deep backtracking.
+- Hardcoded secrets like API keys, tokens, private keys, DB URLs, and JWTs.
+- PII exposure such as SSNs, credit cards, emails, phones, and DOBs.
+- Insecure configuration (debug enabled, weak defaults, open CORS, TLS disabled).
+- Dockerfile issues like root user, latest tags, hardcoded secrets, and SSH exposure.
+- Dependency vulnerabilities in Python `requirements.txt`/`pyproject.toml` and npm lockfiles.
 
 ## Commands
 
@@ -51,6 +49,7 @@ If the Python runtime dependencies are missing, run:
 - `contractguard.enabledAnalyzers`
 - `contractguard.disabledRules`
 - `contractguard.minimumConfidence`
+- `contractguard.includeFixtures`
 - `contractguard.rulesDirectory`
 - `contractguard.sqlExplainDatabase`
 
@@ -58,4 +57,5 @@ If the Python runtime dependencies are missing, run:
 
 - The extension runs analysis locally.
 - The default minimum confidence is `medium`; use `low` for audit mode when you want sample/test fixtures included.
+- Set `contractguard.includeFixtures` to include findings from docs/tests/samples.
 - SARIF export is available for CI and external security tooling.

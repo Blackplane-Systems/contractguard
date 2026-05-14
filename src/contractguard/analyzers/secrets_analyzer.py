@@ -168,7 +168,7 @@ def _confidence_for_secret(pattern_name: str, match: re.Match[str], line: str, f
     if is_documentation_file(filename) and _looks_like_placeholder(value):
         return "low"
     if _looks_like_placeholder(value):
-        return "low" if base != "high" else "medium"
+        return "low"
     return base
 
 
@@ -284,7 +284,7 @@ def analyze(path: str | Path, rules_dir: str | Path) -> list[Finding]:
         findings = run_rules(facts, rules)
         for f in findings:
             f.location = source
-            if is_fixture_path(source):
+            if is_fixture_path(source) or is_documentation_file(source):
                 f.confidence = "low"
 
         all_findings.extend(findings)
