@@ -307,7 +307,7 @@ def analyze(path: str | Path, rules_dir: str | Path) -> list[Finding]:
                 suggestion=f"Remove the secret, rotate it immediately, and use environment variables or a vault.",
                 location=f"{source}:{line_num}",
                 context=preview,
-                attack_vector=f"Attacker clones repo → extracts {pattern_name.replace('_', ' ')} → gains unauthorized access",
+                attack_vector=f"Attacker clones repo -> extracts {pattern_name.replace('_', ' ')} -> gains unauthorized access",
                 cwe="CWE-798",
                 confidence=confidence,
             )

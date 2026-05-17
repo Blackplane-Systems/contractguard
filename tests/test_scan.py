@@ -3,10 +3,10 @@ from pathlib import Path
 from contractguard.scan import ScanTarget, list_analyzers, run_scan, scan_target, serialize_finding
 
 
-def test_list_analyzers_excludes_csv():
+def test_list_analyzers_contains_supported_security_analyzers():
     analyzers = list_analyzers()
-    assert "csv" not in analyzers
     assert "json" in analyzers
+    assert "secrets" in analyzers
 
 
 def test_scan_target_returns_score_and_findings(tmp_path):

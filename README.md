@@ -9,6 +9,10 @@
 - Show findings in a dedicated explorer view
 - Publish inline diagnostics in the editor
 - Export SARIF for external security workflows
+- Export findings as JSON
+- Disable noisy rules from diagnostics or the findings view
+- Preserve workspace findings while rescanning saved files incrementally
+- Show scan/runtime details in the ContractGuard output channel
 - Show an overall security score in the status bar
 - Filter low-confidence fixture/doc/test findings by default
 - Continue scans when one analyzer has a runtime problem
@@ -29,8 +33,10 @@
 - `ContractGuard: Scan Workspace`
 - `ContractGuard: Scan Current File`
 - `ContractGuard: Export SARIF`
+- `ContractGuard: Export Findings JSON`
 - `ContractGuard: Clear Findings`
 - `ContractGuard: Install Python Runtime Dependencies`
+- `ContractGuard: Show Output`
 
 ## Requirements
 
@@ -46,8 +52,10 @@ If the Python runtime dependencies are missing, run:
 - `contractguard.scanOnSave`
 - `contractguard.scanDebounceMs`
 - `contractguard.scanOnSaveScope`
+- `contractguard.scanTimeoutMs`
 - `contractguard.enabledAnalyzers`
 - `contractguard.disabledRules`
+- `contractguard.minimumSeverity`
 - `contractguard.minimumConfidence`
 - `contractguard.includeFixtures`
 - `contractguard.rulesDirectory`

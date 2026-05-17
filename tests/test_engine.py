@@ -8,6 +8,7 @@ from contractguard.engine import (
     Severity,
     evaluate,
     load_rules,
+    normalize_output_text,
     run_rules,
     _coerce,
     _compare,
@@ -155,6 +156,10 @@ class TestRunRules:
         rules = [_make_rule(matcher="x == true")]
         findings = run_rules({"x": False}, rules)
         assert findings == []
+
+
+def test_normalize_output_text_uses_ascii_safe_symbols():
+    assert normalize_output_text("repo → secret — risk…") == "repo -> secret - risk..."
 
 
 # ---- load_rules() tests ----

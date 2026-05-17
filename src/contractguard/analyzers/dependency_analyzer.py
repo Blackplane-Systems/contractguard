@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from contractguard.engine import Finding, Severity, load_rules_for_analyzer, run_rules
-from contractguard.analyzers.file_filters import is_fixture_path
+from contractguard.analyzers.file_filters import is_fixture_path, should_skip_large_file, should_skip_path
 
 # Local vulnerability database — curated set of high-profile CVEs
 # Format: (package, operator, version, cve, severity, description)
@@ -50,6 +50,18 @@ _NPM_VULN_DB: list[tuple[str, str, str, str, str, str]] = [
     ("follow-redirects", "<", "1.15.6", "CVE-2024-28849", "warning", "Authorization header leak"),
     ("semver", "<", "7.5.2", "CVE-2022-25883", "warning", "Regular expression denial of service"),
 ]
+
+_DEPENDENCY_FILENAMES = {
+    "constraints.txt",
+    "npm-shrinkwrap.json",
+    "package-lock.json",
+    "package.json",
+    "pyproject.toml",
+    "requirements-dev.txt",
+    "requirements_dev.txt",
+    "requirements.in",
+    "requirements.txt",
+}
 
 
 def _parse_version(version_str: str) -> tuple:
@@ -199,6 +211,13 @@ def extract_facts_from_package_json(content: str, locked: bool = False) -> dict[
             version = meta.get("version")
             if isinstance(version, str):
                 packages[package_path.removeprefix("node_modules/")] = version
+    elif locked and isinstance(data.get("dependencies"), dict):
+        for name, meta in data["dependencies"].items():
+            if not isinstance(meta, dict):
+                continue
+            version = meta.get("version")
+            if isinstance(version, str):
+                packages[name] = version
     else:
         for section in ("dependencies", "devDependencies", "optionalDependencies"):
             deps = data.get(section, {})
@@ -236,41 +255,49 @@ def extract_facts_from_dependency_file(filename: str, content: str) -> dict[str,
     name = Path(filename).name.lower()
     if name == "pyproject.toml":
         return extract_facts_from_pyproject(content)
-    if name == "package-lock.json":
+    if name in {"package-lock.json", "npm-shrinkwrap.json"}:
         return extract_facts_from_package_json(content, locked=True)
     if name == "package.json":
         return extract_facts_from_package_json(content, locked=False)
     return extract_facts_from_requirements(content)
 
 
+def _is_dependency_file(path: Path) -> bool:
+    name = path.name.lower()
+    if name in _DEPENDENCY_FILENAMES:
+        return True
+    return bool(re.match(r"^requirements[-_\w]*\.(?:txt|in)$", name))
+
+
+def _read_dependency_file(path: Path, skip_package_if_lock: bool = False) -> tuple[str, str] | None:
+    if should_skip_path(path) or should_skip_large_file(path) or not _is_dependency_file(path):
+        return None
+    if skip_package_if_lock and path.name.lower() == "package.json" and (path.parent / "package-lock.json").exists():
+        return None
+    try:
+        return str(path), path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+
+
 def load_dependency_files(path: str | Path) -> list[tuple[str, str]]:
     """Load dependency files."""
     path = Path(path)
     files: list[tuple[str, str]] = []
-    dep_names = {
-        "constraints.txt",
-        "package-lock.json",
-        "package.json",
-        "pyproject.toml",
-        "requirements-dev.txt",
-        "requirements_dev.txt",
-        "requirements.in",
-        "requirements.txt",
-    }
 
     if path.is_dir():
-        has_npm_lock = (path / "package-lock.json").exists()
-        for name in sorted(dep_names):
-            if name == "package.json" and has_npm_lock:
+        seen: set[str] = set()
+        for candidate in sorted(path.rglob("*")):
+            if not candidate.is_file():
                 continue
-            f = path / name
-            if f.exists():
-                files.append((str(f), f.read_text(encoding="utf-8", errors="replace")))
-        for f in sorted(path.glob("requirements*.txt")):
-            if str(f) not in [x[0] for x in files]:
-                files.append((str(f), f.read_text(encoding="utf-8", errors="replace")))
+            item = _read_dependency_file(candidate, skip_package_if_lock=True)
+            if item and item[0] not in seen:
+                files.append(item)
+                seen.add(item[0])
     elif path.is_file():
-        files.append((str(path), path.read_text(encoding="utf-8", errors="replace")))
+        item = _read_dependency_file(path)
+        if item:
+            files.append(item)
 
     return files
 

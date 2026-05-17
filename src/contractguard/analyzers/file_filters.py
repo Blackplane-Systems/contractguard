@@ -67,7 +67,6 @@ _SOURCE_EXTENSIONS = {
 }
 
 _DATA_EXTENSIONS = {
-    ".csv",
     ".env",
     ".ini",
     ".json",

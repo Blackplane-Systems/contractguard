@@ -8,8 +8,11 @@ import { Finding, ScanPayload, Severity } from './types';
 
 const sourceName = 'ContractGuard';
 const analyzerIds = ['json', 'sql', 'regex', 'secrets', 'pii', 'config', 'dockerfile', 'deps'] as const;
+type ScanPublishMode = 'replace' | 'mergeFile' | 'none';
+type FindingCommandArgument = Finding | { finding?: Finding } | string | undefined;
 const supportedExtensions = new Set([
   '.json',
+  '.jsonl',
   '.sql',
   '.txt',
   '.regex',
@@ -39,14 +42,19 @@ function riskSummaryForGrade(grade: string): string {
   }
 }
 
+function severityRank(severity: Severity): number {
+  return { info: 0, warning: 1, critical: 2, block: 3 }[severity] ?? 0;
+}
+
 class ContractGuardController implements vscode.Disposable {
   private readonly diagnostics = vscode.languages.createDiagnosticCollection('contractguard');
   private readonly tree = new FindingsTreeDataProvider();
   private readonly statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 50);
+  private readonly output = vscode.window.createOutputChannel('ContractGuard');
   private scanTimer: NodeJS.Timeout | undefined;
   private running = false;
   private queuedRequest:
-    | { targetPath: string; analyzer: string; includeSarif: boolean }
+    | { targetPath: string; analyzer: string; includeSarif: boolean; publishMode: ScanPublishMode }
     | undefined;
   private queuedScanPromise: Promise<ScanPayload> | undefined;
   private resolveQueuedScan: ((payload: ScanPayload) => void) | undefined;
@@ -63,6 +71,7 @@ class ContractGuardController implements vscode.Disposable {
     context.subscriptions.push(
       this.diagnostics,
       this.statusBar,
+      this.output,
       vscode.window.registerTreeDataProvider('contractguard.findings', this.tree)
     );
   }
@@ -96,7 +105,7 @@ class ContractGuardController implements vscode.Disposable {
       vscode.window.showInformationMessage(`ContractGuard does not support scanning this file type: ${path.basename(filePath)}`);
       return;
     }
-    await this.runScan(filePath, analyzer, false);
+    await this.runScan(filePath, analyzer, false, 'mergeFile');
   }
 
   clear(): void {
@@ -104,6 +113,7 @@ class ContractGuardController implements vscode.Disposable {
     this.tree.clear();
     this.diagnostics.clear();
     this.statusBar.text = 'ContractGuard: cleared';
+    this.output.appendLine(`[${new Date().toISOString()}] Cleared findings.`);
   }
 
   async exportSarif(): Promise<void> {
@@ -131,6 +141,26 @@ class ContractGuardController implements vscode.Disposable {
     vscode.window.showInformationMessage(`ContractGuard SARIF exported to ${target.fsPath}`);
   }
 
+  async exportJson(): Promise<void> {
+    const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (!workspacePath) {
+      vscode.window.showInformationMessage('ContractGuard requires an open workspace.');
+      return;
+    }
+
+    const payload = this.latestPayload ?? await this.runWorkspaceScan(workspacePath, false);
+    const target = await vscode.window.showSaveDialog({
+      defaultUri: vscode.Uri.file(path.join(workspacePath, 'contractguard-findings.json')),
+      filters: { JSON: ['json'] }
+    });
+    if (!target) {
+      return;
+    }
+
+    await vscode.workspace.fs.writeFile(target, new TextEncoder().encode(JSON.stringify(payload, null, 2)));
+    vscode.window.showInformationMessage(`ContractGuard findings exported to ${target.fsPath}`);
+  }
+
   scheduleWorkspaceScan(): void {
     this.scheduleScan(async () => {
       await this.scanWorkspace(false);
@@ -144,11 +174,65 @@ class ContractGuardController implements vscode.Disposable {
     }
 
     this.scheduleScan(async () => {
-      await this.runScan(filePath, analyzer, false);
+      await this.runScan(filePath, analyzer, false, 'mergeFile');
     });
   }
 
-  async openFinding(finding: Finding): Promise<void> {
+  showOutput(): void {
+    this.output.show();
+  }
+
+  async copyFinding(argument: FindingCommandArgument): Promise<void> {
+    const finding = this.resolveFinding(argument);
+    if (!finding) {
+      return;
+    }
+    await vscode.env.clipboard.writeText([
+      `${finding.rule_id} (${finding.severity.toUpperCase()})`,
+      finding.description,
+      finding.location,
+      finding.suggestion
+    ].filter(Boolean).join('\n'));
+    vscode.window.showInformationMessage(`Copied ${finding.rule_id} finding details.`);
+  }
+
+  async disableRule(ruleOrFinding: FindingCommandArgument): Promise<void> {
+    const finding = this.resolveFinding(ruleOrFinding);
+    const ruleId = typeof ruleOrFinding === 'string' ? ruleOrFinding : finding?.rule_id;
+    if (!ruleId) {
+      return;
+    }
+
+    const config = vscode.workspace.getConfiguration('contractguard');
+    const disabled = config.get<string[]>('disabledRules', []).map((item) => item.trim()).filter(Boolean);
+    if (!disabled.some((item) => item.toLowerCase() === ruleId.toLowerCase())) {
+      disabled.push(ruleId);
+      disabled.sort((a, b) => a.localeCompare(b));
+      await config.update('disabledRules', disabled, vscode.ConfigurationTarget.Workspace);
+    }
+    this.output.appendLine(`[${new Date().toISOString()}] Disabled rule ${ruleId}.`);
+    vscode.window.showInformationMessage(`ContractGuard rule disabled: ${ruleId}`);
+    this.scheduleWorkspaceScan();
+  }
+
+  private resolveFinding(argument: FindingCommandArgument): Finding | undefined {
+    if (typeof argument === 'string') {
+      return undefined;
+    }
+    if (!argument) {
+      return undefined;
+    }
+    if ('finding' in argument && argument.finding) {
+      return argument.finding;
+    }
+    return 'rule_id' in argument ? argument : undefined;
+  }
+
+  async openFinding(argument: FindingCommandArgument): Promise<void> {
+    const finding = this.resolveFinding(argument);
+    if (!finding) {
+      return;
+    }
     const parsed = this.parseLocation(finding.location);
     if (!parsed) {
       return;
@@ -170,15 +254,20 @@ class ContractGuardController implements vscode.Disposable {
     const payloads: ScanPayload[] = [];
 
     for (const analyzer of analyzers) {
-      payloads.push(await this.runScan(workspacePath, analyzer, includeSarif));
+      payloads.push(await this.runScan(workspacePath, analyzer, includeSarif, 'none'));
     }
 
     return this.mergePayloads(workspacePath, payloads, includeSarif);
   }
 
-  private async runScan(targetPath: string, analyzer: string, includeSarif: boolean): Promise<ScanPayload> {
+  private async runScan(
+    targetPath: string,
+    analyzer: string,
+    includeSarif: boolean,
+    publishMode: ScanPublishMode = 'replace'
+  ): Promise<ScanPayload> {
     if (this.running) {
-      this.queuedRequest = { targetPath, analyzer, includeSarif };
+      this.queuedRequest = { targetPath, analyzer, includeSarif, publishMode };
       if (!this.queuedScanPromise) {
         this.queuedScanPromise = new Promise<ScanPayload>((resolve, reject) => {
           this.resolveQueuedScan = resolve;
@@ -190,6 +279,7 @@ class ContractGuardController implements vscode.Disposable {
 
     this.running = true;
     this.statusBar.text = 'ContractGuard: scanning...';
+    this.output.appendLine(`[${new Date().toISOString()}] Scan started: ${analyzer} -> ${targetPath}`);
 
     try {
       const payload = await vscode.window.withProgress(
@@ -206,14 +296,17 @@ class ContractGuardController implements vscode.Disposable {
         findings: filteredFindings,
         score: this.recomputeScore(payload.score, filteredFindings)
       };
-      this.latestPayload = normalizedPayload;
-      this.publishDiagnostics(filteredFindings);
-      this.tree.setFindings(filteredFindings);
-      this.updateStatusBar(normalizedPayload);
+      if (publishMode !== 'none') {
+        this.applyPayload(normalizedPayload, targetPath, publishMode);
+      }
+      this.output.appendLine(
+        `[${new Date().toISOString()}] Scan completed: ${analyzer}; ${filteredFindings.length} findings.`
+      );
       return normalizedPayload;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.statusBar.text = 'ContractGuard: runtime error';
+      this.output.appendLine(`[${new Date().toISOString()}] Scan failed: ${message}`);
       const action = await vscode.window.showErrorMessage(`ContractGuard scan failed: ${message}`, 'Install Runtime');
       if (action === 'Install Runtime') {
         await installPythonRuntime(this.context);
@@ -229,10 +322,12 @@ class ContractGuardController implements vscode.Disposable {
       this.resolveQueuedScan = undefined;
       this.rejectQueuedScan = undefined;
       if (queuedRequest && resolveQueuedScan && rejectQueuedScan) {
-        void this.runScan(queuedRequest.targetPath, queuedRequest.analyzer, queuedRequest.includeSarif).then(
-          resolveQueuedScan,
-          rejectQueuedScan
-        );
+        void this.runScan(
+          queuedRequest.targetPath,
+          queuedRequest.analyzer,
+          queuedRequest.includeSarif,
+          queuedRequest.publishMode
+        ).then(resolveQueuedScan, rejectQueuedScan);
       }
     }
   }
@@ -305,16 +400,54 @@ class ContractGuardController implements vscode.Disposable {
     return mergedPayload;
   }
 
+  private applyPayload(payload: ScanPayload, targetPath: string, mode: Exclude<ScanPublishMode, 'none'>): ScanPayload {
+    const nextPayload = mode === 'mergeFile'
+      ? this.mergeFilePayload(payload, targetPath)
+      : payload;
+
+    this.latestPayload = nextPayload;
+    this.publishDiagnostics(nextPayload.findings);
+    this.tree.setFindings(nextPayload.findings);
+    this.updateStatusBar(nextPayload);
+    return nextPayload;
+  }
+
+  private mergeFilePayload(payload: ScanPayload, targetPath: string): ScanPayload {
+    const previousFindings = this.latestPayload?.findings ?? [];
+    const targetKey = this.normalizeFilePath(targetPath);
+    const retained = previousFindings.filter((finding) => {
+      const filePath = this.locationToFilePath(finding.location);
+      return filePath ? this.normalizeFilePath(filePath) !== targetKey : true;
+    });
+    const findings = [...retained, ...payload.findings];
+    return {
+      ...payload,
+      target: this.latestPayload?.target ?? payload.target,
+      analyzer: this.latestPayload?.analyzer ?? payload.analyzer,
+      sarif: null,
+      findings,
+      score: this.recomputeScore(payload.score, findings)
+    };
+  }
+
   private filterFindings(findings: Finding[]): Finding[] {
     const disabledRules = new Set(
-      vscode.workspace.getConfiguration('contractguard').get<string[]>('disabledRules', []).map((item) => item.trim())
+      vscode.workspace.getConfiguration('contractguard').get<string[]>('disabledRules', []).map((item) => item.trim().toLowerCase())
     );
     const enabledAnalyzers = new Set(
       vscode.workspace.getConfiguration('contractguard').get<string[]>('enabledAnalyzers', [])
     );
+    const configuredSeverity = vscode.workspace.getConfiguration('contractguard').get<string>('minimumSeverity', 'info');
+    const minimumSeverity = ['info', 'warning', 'critical', 'block'].includes(configuredSeverity)
+      ? configuredSeverity as Severity
+      : 'info';
+    const minimumRank = severityRank(minimumSeverity);
 
     return findings.filter((finding) => {
-      if (disabledRules.has(finding.rule_id)) {
+      if (disabledRules.has(finding.rule_id.toLowerCase())) {
+        return false;
+      }
+      if (severityRank(finding.severity) < minimumRank) {
         return false;
       }
       if (enabledAnalyzers.size === 0) {
@@ -446,18 +579,44 @@ class ContractGuardController implements vscode.Disposable {
       return undefined;
     }
 
-    const parts = location.match(/^(.*?)(?::(\d+))?$/);
-    if (!parts) {
-      return undefined;
-    }
-    const filePath = parts[1];
+    const filePath = this.locationToFilePath(location);
     if (!filePath || !fs.existsSync(filePath)) {
       return undefined;
     }
     return {
       uri: vscode.Uri.file(filePath),
-      line: parts[2] ? Number(parts[2]) : 1
+      line: this.locationLine(location)
     };
+  }
+
+  private locationToFilePath(location: string): string {
+    if (!location) {
+      return '';
+    }
+    const separator = location.lastIndexOf(':');
+    if (separator > 1) {
+      const suffix = location.slice(separator + 1);
+      if (/^\d+$/.test(suffix)) {
+        return location.slice(0, separator);
+      }
+    }
+    return location;
+  }
+
+  private locationLine(location: string): number {
+    const separator = location.lastIndexOf(':');
+    if (separator > 1) {
+      const suffix = location.slice(separator + 1);
+      if (/^\d+$/.test(suffix)) {
+        return Number(suffix);
+      }
+    }
+    return 1;
+  }
+
+  private normalizeFilePath(filePath: string): string {
+    const resolved = path.resolve(filePath);
+    return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
   }
 
   private selectAnalyzer(filePath: string): string {
@@ -465,10 +624,16 @@ class ContractGuardController implements vscode.Disposable {
     const basename = path.basename(filePath).toLowerCase();
 
     if (extension === '.sql') return 'sql';
-    if (extension === '.json') return 'json';
+    if (extension === '.json' || extension === '.jsonl') return 'json';
     if (extension === '.regex') return 'regex';
     if (basename === 'dockerfile' || extension === '.dockerfile') return 'dockerfile';
-    if (basename.startsWith('requirements') || basename === 'constraints.txt') return 'deps';
+    if (
+      basename.startsWith('requirements')
+      || basename === 'constraints.txt'
+      || basename === 'package.json'
+      || basename === 'package-lock.json'
+      || basename === 'pyproject.toml'
+    ) return 'deps';
     if (extension === '.env' || extension === '.yaml' || extension === '.yml' || extension === '.toml' || extension === '.ini' || extension === '.cfg' || extension === '.conf' || extension === '.properties') {
       return 'config';
     }
@@ -479,11 +644,39 @@ class ContractGuardController implements vscode.Disposable {
   }
 }
 
+class ContractGuardCodeActionProvider implements vscode.CodeActionProvider {
+  static readonly providedCodeActionKinds = [vscode.CodeActionKind.QuickFix];
+
+  provideCodeActions(
+    _document: vscode.TextDocument,
+    _range: vscode.Range | vscode.Selection,
+    context: vscode.CodeActionContext
+  ): vscode.CodeAction[] {
+    return context.diagnostics
+      .filter((diagnostic) => diagnostic.source === sourceName && typeof diagnostic.code === 'string')
+      .map((diagnostic) => {
+        const ruleId = String(diagnostic.code);
+        const action = new vscode.CodeAction(`ContractGuard: Disable ${ruleId}`, vscode.CodeActionKind.QuickFix);
+        action.command = {
+          command: 'contractguard.disableRule',
+          title: `Disable ${ruleId}`,
+          arguments: [ruleId]
+        };
+        action.diagnostics = [diagnostic];
+        action.isPreferred = false;
+        return action;
+      });
+  }
+}
+
 export function activate(context: vscode.ExtensionContext): void {
   const controller = new ContractGuardController(context);
 
   context.subscriptions.push(
     controller,
+    vscode.languages.registerCodeActionsProvider({ scheme: 'file' }, new ContractGuardCodeActionProvider(), {
+      providedCodeActionKinds: ContractGuardCodeActionProvider.providedCodeActionKinds
+    }),
     vscode.commands.registerCommand('contractguard.scanWorkspace', async () => {
       await controller.scanWorkspace(false);
     }),
@@ -493,15 +686,27 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('contractguard.exportSarif', async () => {
       await controller.exportSarif();
     }),
+    vscode.commands.registerCommand('contractguard.exportJson', async () => {
+      await controller.exportJson();
+    }),
     vscode.commands.registerCommand('contractguard.clearFindings', () => {
       controller.clear();
     }),
-    vscode.commands.registerCommand('contractguard.openFinding', async (finding: Finding) => {
-      await controller.openFinding(finding);
+    vscode.commands.registerCommand('contractguard.openFinding', async (argument: FindingCommandArgument) => {
+      await controller.openFinding(argument);
     }),
     vscode.commands.registerCommand('contractguard.installRuntime', async () => {
       await installPythonRuntime(context);
       vscode.window.showInformationMessage('ContractGuard Python runtime dependencies installed.');
+    }),
+    vscode.commands.registerCommand('contractguard.copyFinding', async (argument: FindingCommandArgument) => {
+      await controller.copyFinding(argument);
+    }),
+    vscode.commands.registerCommand('contractguard.disableRule', async (ruleOrFinding: FindingCommandArgument) => {
+      await controller.disableRule(ruleOrFinding);
+    }),
+    vscode.commands.registerCommand('contractguard.showOutput', () => {
+      controller.showOutput();
     }),
     vscode.workspace.onDidSaveTextDocument((document) => {
       if (!vscode.workspace.getConfiguration('contractguard').get<boolean>('scanOnSave', true)) {
@@ -510,7 +715,7 @@ export function activate(context: vscode.ExtensionContext): void {
       if (document.uri.scheme !== 'file') {
         return;
       }
-      const scanOnSaveScope = vscode.workspace.getConfiguration('contractguard').get<string>('scanOnSaveScope', 'workspace');
+      const scanOnSaveScope = vscode.workspace.getConfiguration('contractguard').get<string>('scanOnSaveScope', 'currentFile');
       if (scanOnSaveScope === 'currentFile') {
         controller.scheduleFileScan(document.uri.fsPath);
         return;
