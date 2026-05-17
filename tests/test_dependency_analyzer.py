@@ -11,6 +11,7 @@ from contractguard.analyzers.dependency_analyzer import (
     extract_facts_from_package_json,
     extract_facts_from_pyproject,
     extract_facts_from_requirements,
+    load_dependency_files,
     _parse_version,
     _version_matches,
 )
@@ -97,6 +98,12 @@ dependencies = ["django==2.2.0", "requests>=2.31.0"]
         assert facts["has_vulnerable_packages"] is True
         assert any(item[2] == "CVE-2021-23337" for item in facts["vulnerabilities"])
 
+    def test_legacy_package_lock_dependencies_are_scanned(self):
+        content = '{"dependencies":{"lodash":{"version":"4.17.20"}}}'
+        facts = extract_facts_from_package_json(content, locked=True)
+        assert facts["has_vulnerable_packages"] is True
+        assert any(item[0] == "lodash" for item in facts["vulnerabilities"])
+
     def test_no_placeholder_cve_ids(self):
         content = "django==2.2.0\n"
         facts = extract_facts_from_dependency_file("requirements.txt", content)
@@ -137,3 +144,22 @@ class TestAnalyze:
             assert len(cve_findings) >= 1
         finally:
             path.unlink(missing_ok=True)
+
+    def test_directory_scan_finds_nested_dependency_files(self, tmp_path):
+        service = tmp_path / "services" / "api"
+        service.mkdir(parents=True)
+        (service / "requirements-prod.txt").write_text("django==2.2.0\n")
+
+        files = load_dependency_files(tmp_path)
+        assert any("requirements-prod.txt" in source for source, _ in files)
+
+        findings = analyze(tmp_path, RULES_DIR)
+        assert any(f.rule_id.startswith("CVE") for f in findings)
+
+    def test_directory_scan_skips_node_modules_dependency_files(self, tmp_path):
+        vendor = tmp_path / "node_modules" / "package"
+        vendor.mkdir(parents=True)
+        (vendor / "package.json").write_text('{"dependencies":{"lodash":"4.17.20"}}')
+
+        files = load_dependency_files(tmp_path)
+        assert files == []

@@ -28,7 +28,7 @@ class Rule:
 
     id: str
     name: str
-    analyzer: str  # json | sql | regex | secrets | pii | csv | config | dockerfile | deps
+    analyzer: str  # json | sql | regex | secrets | pii | config | dockerfile | deps
     severity: Severity
     description: str
     matcher: str
@@ -89,6 +89,19 @@ def load_rules_for_analyzer(rules_dir: str | Path, analyzer: str) -> list[Rule]:
 
 _FUNC_RE = re.compile(r"^(\w+)\('([^']*)'\)\s*(==|!=|>|>=|<|<=)\s*(.+)$")
 _SIMPLE_RE = re.compile(r"^(\w+)\s*(==|!=|>|>=|<|<=)\s*(.+)$")
+_TEXT_REPLACEMENTS = {
+    "\u2192": "->",
+    "\u2014": "-",
+    "\u2013": "-",
+    "\u2026": "...",
+}
+
+
+def normalize_output_text(value: str) -> str:
+    """Return stable ASCII-safe text for machine-readable findings."""
+    for source, replacement in _TEXT_REPLACEMENTS.items():
+        value = value.replace(source, replacement)
+    return value
 
 
 def _coerce(raw: str) -> bool | int | float | str:
@@ -167,13 +180,13 @@ def evaluate(facts: dict[str, Any], rule: Rule) -> Finding | None:
 def _make_finding(rule: Rule, explanation: str) -> Finding:
     return Finding(
         rule_id=rule.id,
-        attack_vector=rule.attack_vector,
+        attack_vector=normalize_output_text(rule.attack_vector),
         cwe=rule.cwe,
         rule_name=rule.name,
         severity=rule.severity,
-        description=rule.description,
-        explanation=explanation,
-        suggestion=rule.suggestion,
+        description=normalize_output_text(rule.description),
+        explanation=normalize_output_text(explanation),
+        suggestion=normalize_output_text(rule.suggestion),
     )
 
 

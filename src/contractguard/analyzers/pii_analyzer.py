@@ -1,6 +1,6 @@
 """PII (Personally Identifiable Information) Detector.
 
-Scans JSON payloads, CSV files, and text files for data that looks like
+Scans JSON payloads, config files, and text files for data that looks like
 personal information: SSNs, credit card numbers, phone numbers, emails, DOBs.
 
 Relevant for GDPR, CCPA, HIPAA compliance — a strong cybersecurity/privacy angle.

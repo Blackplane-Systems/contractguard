@@ -60,9 +60,9 @@ class TestExtractFacts:
         assert facts["has_phone"] is False
         assert facts["pii_count"] == 0
 
-    def test_does_not_treat_regular_dates_as_dob(self):
+    def test_does_not_treat_regular_log_dates_as_dob(self):
         content = '"dateadded","2026-05-13 08:25:10","last_online","2026-05-13 08:25:10"\n'
-        facts = extract_facts(content, "feed.csv")
+        facts = extract_facts(content, "feed.txt")
         assert facts["has_dob"] is False
         assert facts["pii_count"] == 0
 

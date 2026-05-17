@@ -27,6 +27,11 @@ function getIncludeFixtures(): boolean {
   return getConfig().get<boolean>('includeFixtures', false);
 }
 
+function getScanTimeoutMs(): number {
+  const configured = getConfig().get<number>('scanTimeoutMs', 120000);
+  return Number.isFinite(configured) && configured >= 5000 ? configured : 120000;
+}
+
 function getPythonExecutable(): string {
   const configured = getConfig().get<string>('pythonPath', '').trim();
   if (configured) {
@@ -99,11 +104,20 @@ export async function runContractGuardScan(
   };
 
   return await new Promise<ScanPayload>((resolve, reject) => {
+    let settled = false;
     const child = cp.spawn(python, args, {
       cwd: getWorkspaceRoot() ?? context.extensionPath,
       env,
       windowsHide: true
     });
+    const timeout = setTimeout(() => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      child.kill();
+      reject(new Error(`ContractGuard scan exceeded ${getScanTimeoutMs()}ms and was stopped.`));
+    }, getScanTimeoutMs());
 
     let stdout = '';
     let stderr = '';
@@ -116,10 +130,17 @@ export async function runContractGuardScan(
     });
 
     child.on('error', (error) => {
+      clearTimeout(timeout);
+      settled = true;
       reject(error);
     });
 
     child.on('close', (code) => {
+      clearTimeout(timeout);
+      if (settled) {
+        return;
+      }
+      settled = true;
       if (code !== 0) {
         reject(new Error(stderr.trim() || `ContractGuard bridge exited with code ${code}`));
         return;

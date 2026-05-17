@@ -119,6 +119,7 @@ class TestAnalyze:
         try:
             findings = analyze(path, RULES_DIR)
             assert any(f.attack_vector for f in findings)
+            assert all("→" not in f.attack_vector for f in findings)
         finally:
             path.unlink(missing_ok=True)
 

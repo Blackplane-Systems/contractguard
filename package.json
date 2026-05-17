@@ -1,8 +1,8 @@
 {
   "name": "contract-guard",
   "displayName": "contract-guard",
-  "description": "A VS Code extension that finds security issues in code, configs, queries, Dockerfiles, and secrets.",
-  "version": "2.1.1",
+  "description": "A VS Code extension that finds security issues in code, configs, queries, Dockerfiles, dependencies, PII, and secrets.",
+  "version": "3.0.0",
   "publisher": "BlackplaneSystems",
   "license": "Apache-2.0",
   "icon": "media/icon.png",
@@ -33,6 +33,9 @@
     "onStartupFinished",
     "onCommand:contractguard.scanWorkspace",
     "onCommand:contractguard.scanCurrentFile",
+    "onCommand:contractguard.exportJson",
+    "onCommand:contractguard.exportSarif",
+    "onCommand:contractguard.showOutput",
     "onView:contractguard.findings"
   ],
   "main": "./dist/extension.js",
@@ -41,7 +44,8 @@
     "src/contractguard/*.py",
     "src/contractguard/analyzers/*.py",
     "rules/**",
-    "media/**",
+    "media/icon.png",
+    "media/icon.svg",
     "python-requirements.txt",
     "README.md",
     "LICENSE"
@@ -61,6 +65,10 @@
         "title": "ContractGuard: Export SARIF"
       },
       {
+        "command": "contractguard.exportJson",
+        "title": "ContractGuard: Export Findings JSON"
+      },
+      {
         "command": "contractguard.clearFindings",
         "title": "ContractGuard: Clear Findings"
       },
@@ -71,6 +79,18 @@
       {
         "command": "contractguard.installRuntime",
         "title": "ContractGuard: Install Python Runtime Dependencies"
+      },
+      {
+        "command": "contractguard.copyFinding",
+        "title": "ContractGuard: Copy Finding Details"
+      },
+      {
+        "command": "contractguard.disableRule",
+        "title": "ContractGuard: Disable Rule"
+      },
+      {
+        "command": "contractguard.showOutput",
+        "title": "ContractGuard: Show Output"
       }
     ],
     "views": {
@@ -94,8 +114,35 @@
           "group": "navigation"
         },
         {
+          "command": "contractguard.exportJson",
+          "when": "view == contractguard.findings",
+          "group": "navigation"
+        },
+        {
           "command": "contractguard.clearFindings",
           "when": "view == contractguard.findings",
+          "group": "navigation"
+        },
+        {
+          "command": "contractguard.showOutput",
+          "when": "view == contractguard.findings",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "contractguard.openFinding",
+          "when": "view == contractguard.findings && viewItem == finding",
+          "group": "inline"
+        },
+        {
+          "command": "contractguard.copyFinding",
+          "when": "view == contractguard.findings && viewItem == finding",
+          "group": "navigation"
+        },
+        {
+          "command": "contractguard.disableRule",
+          "when": "view == contractguard.findings && viewItem == finding",
           "group": "navigation"
         }
       ]
@@ -119,11 +166,23 @@
           "minimum": 0,
           "description": "Debounce delay for automatic scans."
         },
+        "contractguard.scanTimeoutMs": {
+          "type": "number",
+          "default": 120000,
+          "minimum": 5000,
+          "description": "Maximum time a single analyzer process may run before the extension stops it."
+        },
         "contractguard.scanOnSaveScope": {
           "type": "string",
           "default": "currentFile",
           "enum": ["workspace", "currentFile"],
           "description": "What to scan after saving a file: the whole workspace or just the active file."
+        },
+        "contractguard.minimumSeverity": {
+          "type": "string",
+          "default": "info",
+          "enum": ["info", "warning", "critical", "block"],
+          "description": "Minimum severity shown in VS Code diagnostics and findings."
         },
         "contractguard.minimumConfidence": {
           "type": "string",
@@ -149,7 +208,8 @@
             "deps"
           ],
           "items": {
-            "type": "string"
+            "type": "string",
+            "enum": ["json", "sql", "regex", "secrets", "pii", "config", "dockerfile", "deps"]
           },
           "description": "Subset of analyzers used by the extension when scanning."
         },
@@ -176,7 +236,7 @@
   },
   "scripts": {
     "build": "tsc -p ./tsconfig.json",
-    "package": "node -e \"require('fs').mkdirSync('dist-vsix',{recursive:true})\" && vsce package --out dist-vsix/contractguard-2.1.1.vsix",
+    "package": "node -e \"require('fs').mkdirSync('dist-vsix',{recursive:true})\" && vsce package --out dist-vsix/contractguard-3.0.0.vsix",
     "prepackage": "npm run build"
   },
   "devDependencies": {
